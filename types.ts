@@ -103,6 +103,8 @@ export interface Candidate {
   package: string[];
   currentTestIndex: number;
   appliedPosition?: string;
+  // Fix: Added appliedPositionId to Candidate interface to resolve property access error in apiService.ts line 125
+  appliedPositionId?: string;
   whatsapp?: string;
   address?: string;
   dob?: string;

@@ -4,16 +4,15 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { Candidate, UserRole, TestType, JobPosition, TestModule } from './types';
 import { DISC_QUESTIONS } from './constants';
 import { calculateDiscScore, calculateIshiharaScore } from './services/scoringService';
+import { api } from './services/apiService';
 import ReportView from './components/ReportView';
 import PositionManagement from './components/PositionManagement';
 import TestManagement from './components/TestManagement';
 import KraepelinTest from './components/KraepelinTest';
 import IshiharaTest from './components/IshiharaTest';
-import TokenRegistry from './components/TokenRegistry';
 
 const BUANA_GREEN = '#10B981';
 const DARK_EMERALD = '#064e3b';
-const API_BASE = '/api'; // Path ke folder API PHP Anda
 
 const BuanaLogo: React.FC<{ className?: string; color?: string; inverse?: boolean }> = ({ className = "h-8", color = BUANA_GREEN, inverse = false }) => (
   <div className={`flex items-center gap-3 ${className}`}>
@@ -43,7 +42,7 @@ const App: React.FC = () => {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [activeTestModule, setActiveTestModule] = useState<TestModule | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [activeAdminTab, setActiveAdminTab] = useState<'dashboard' | 'monitoring' | 'positions' | 'test_management' | 'candidates'>('dashboard');
+  const [activeAdminTab, setActiveAdminTab] = useState<'dashboard' | 'positions' | 'test_management' | 'candidates'>('dashboard');
   const [loginContext, setLoginContext] = useState<'CANDIDATE' | 'ADMIN'>('CANDIDATE');
   const [candidateSearch, setCandidateSearch] = useState('');
   const [discAnswers, setDiscAnswers] = useState<{ id: number; most: number; least: number }[]>([]);
@@ -61,24 +60,32 @@ const App: React.FC = () => {
 
   const [registration, setRegistration] = useState({ name: '', whatsapp: '', dob: '', education: '', address: '', appliedPositionId: '' });
 
-  // Fetch Positions on Mount
+  // Load Data via ApiService
   useEffect(() => {
-    fetch(`${API_BASE}/positions.php`)
-      .then(res => res.json())
-      .then(data => setJobPositions(data))
-      .catch(err => console.error("Gagal load posisi:", err));
+    const loadPositions = async () => {
+      try {
+        const data = await api.getActivePositions();
+        setJobPositions(data);
+      } catch (err) {
+        showToast("Gagal memuat posisi dari server.", "error");
+      }
+    };
+    loadPositions();
   }, []);
 
-  // Fetch Admin Data
   useEffect(() => {
     if (role === UserRole.ADMIN) {
-      fetch(`${API_BASE}/admin.php?action=stats`)
-        .then(res => res.json())
-        .then(data => setAdminStats(data));
-
-      fetch(`${API_BASE}/admin.php`)
-        .then(res => res.json())
-        .then(data => setAllCandidates(data));
+      const loadAdminData = async () => {
+        try {
+          const stats = await api.getAdminStats();
+          setAdminStats(stats);
+          const candidates = await api.getAllCandidates();
+          setAllCandidates(candidates);
+        } catch (err) {
+          showToast("Gagal memuat data administrasi.", "error");
+        }
+      };
+      loadAdminData();
     }
   }, [role, activeAdminTab]);
 
@@ -99,16 +106,10 @@ const App: React.FC = () => {
 
   const handleRegisterAndStart = async () => {
     const pos = jobPositions.find(p => p.id === registration.appliedPositionId);
-    if (!registration.name || !registration.whatsapp || !registration.address || !pos) { showToast("Data belum lengkap.", "error"); return; }
+    if (!registration.name || !registration.whatsapp || !registration.address || !pos) { showToast("Data tidak lengkap.", "error"); return; }
     
     try {
-      const response = await fetch(`${API_BASE}/register.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registration)
-      });
-      const data = await response.json();
-      
+      const data = await api.registerCandidate(registration);
       const newCandidate: Candidate = { 
         id: data.id, 
         ...registration, 
@@ -121,38 +122,39 @@ const App: React.FC = () => {
       setCandidate(newCandidate);
       setRole(UserRole.CANDIDATE);
       startNextTest(newCandidate);
+      showToast("Registrasi berhasil. Mulai tes sekarang.", "success");
     } catch (err) {
       showToast("Gagal registrasi.", "error");
     }
   };
 
   const finishCurrentTest = async (testData: any) => {
-    if (!candidate) return;
-
+    if (!candidate || !activeTestModule) return;
     const isLast = candidate.currentTestIndex === candidate.package.length - 1;
     
-    // Kirim ke backend
-    await fetch(`${API_BASE}/submit_test.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        participantId: candidate.id,
-        testType: activeTestModule?.type,
-        results: testData,
-        isLast: isLast
-      })
-    });
-
-    const updated: Candidate = { ...candidate, currentTestIndex: candidate.currentTestIndex + 1, results: { ...candidate.results, ...testData } };
-    setCandidate(updated);
-    startNextTest(updated);
+    try {
+      await api.submitTestResult(candidate.id, activeTestModule.type, testData, isLast);
+      const updated: Candidate = { 
+        ...candidate, 
+        currentTestIndex: candidate.currentTestIndex + 1, 
+        results: { ...candidate.results, [activeTestModule.type.toLowerCase()]: testData } 
+      };
+      setCandidate(updated);
+      startNextTest(updated);
+    } catch (err) {
+      showToast("Gagal menyimpan hasil.", "error");
+    }
   };
 
   const handleDeleteCandidate = async (id: string, name: string) => {
-    if (window.confirm(`Hapus data ${name} secara permanen? Seluruh hasil tes akan hilang.`)) {
-      await fetch(`${API_BASE}/admin.php?id=${id}`, { method: 'DELETE' });
-      setAllCandidates(prev => prev.filter(c => c.id !== id));
-      showToast("Data dihapus.", "success");
+    if (window.confirm(`Hapus data ${name} secara permanen?`)) {
+      try {
+        await api.deleteCandidate(id);
+        setAllCandidates(prev => prev.filter(c => c.id !== id));
+        showToast("Kandidat berhasil dihapus.", "success");
+      } catch (err) {
+        showToast("Gagal menghapus.", "error");
+      }
     }
   };
 
@@ -160,8 +162,12 @@ const App: React.FC = () => {
     if (!activeTestModule) return null;
     switch (activeTestModule.type) {
       case TestType.DISC: return renderDisc();
-      case TestType.KRAEPELIN: return <KraepelinTest config={activeTestModule.config} onComplete={(data) => finishCurrentTest({ kraepelin: data })} />;
-      case TestType.ISHIHARA: return <IshiharaTest questions={activeTestModule.questions || []} onComplete={(data) => { const correctKeys: Record<string, string> = {}; activeTestModule.questions?.forEach(q => correctKeys[q.id] = q.correctOptionId || ''); finishCurrentTest({ ishihara: calculateIshiharaScore(data.answers, correctKeys) }); }} />;
+      case TestType.KRAEPELIN: return <KraepelinTest config={activeTestModule.config} onComplete={(data) => finishCurrentTest(data)} />;
+      case TestType.ISHIHARA: return <IshiharaTest questions={activeTestModule.questions || []} onComplete={(data) => {
+          const correctKeys: Record<string, string> = {}; 
+          activeTestModule.questions?.forEach(q => correctKeys[q.id] = q.correctOptionId || ''); 
+          finishCurrentTest(calculateIshiharaScore(data.answers, correctKeys));
+      }} />;
       default: return <div className="p-20 bg-white rounded-3xl text-center font-black">MODUL SEDANG DALAM PENGEMBANGAN</div>;
     }
   };
@@ -182,7 +188,7 @@ const App: React.FC = () => {
     return (
       <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex justify-between items-center border-b pb-8">
-           <h3 className="text-2xl font-black text-slate-800 tracking-tighter">TES DISC (GAYA KERJA)</h3>
+           <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">TES GAYA KERJA (DISC)</h3>
            <p className="text-2xl font-black text-emerald-600">{currentDiscIndex + 1} <span className="text-slate-300 text-sm">/ {DISC_QUESTIONS.length}</span></p>
         </div>
         <div className="space-y-4">
@@ -198,7 +204,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex justify-between pt-8">
           <button onClick={() => setCurrentDiscIndex(prev => Math.max(0, prev - 1))} disabled={currentDiscIndex === 0} className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 disabled:opacity-0">Sebelumnya</button>
-          <button onClick={() => currentDiscIndex < DISC_QUESTIONS.length - 1 ? setCurrentDiscIndex(prev => prev + 1) : finishCurrentTest({ disc: calculateDiscScore(discAnswers) })} disabled={sel.most === -1 || sel.least === -1} className="bg-emerald-600 text-white px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-20">{currentDiscIndex === DISC_QUESTIONS.length - 1 ? 'Selesai' : 'Selanjutnya'}</button>
+          <button onClick={() => currentDiscIndex < DISC_QUESTIONS.length - 1 ? setCurrentDiscIndex(prev => prev + 1) : finishCurrentTest(calculateDiscScore(discAnswers))} disabled={sel.most === -1 || sel.least === -1} className="bg-emerald-600 text-white px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-20">{currentDiscIndex === DISC_QUESTIONS.length - 1 ? 'Selesai' : 'Selanjutnya'}</button>
         </div>
       </div>
     );
@@ -225,7 +231,7 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-2 gap-8">
                   <input type="tel" value={registration.whatsapp} onChange={e => setRegistration({...registration, whatsapp: e.target.value})} className="w-full px-8 py-5 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-emerald-500 focus:bg-white transition-all font-bold text-lg" placeholder="WhatsApp Aktif" />
                   <select value={registration.appliedPositionId} onChange={e => setRegistration({...registration, appliedPositionId: e.target.value})} className="w-full px-8 py-5 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-emerald-500 focus:bg-white transition-all font-bold text-lg">
-                    <option value="">Pilih Posisi</option>
+                    <option value="">-- Pilih Posisi Dilamar --</option>
                     {jobPositions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                   </select>
                 </div>
@@ -236,7 +242,6 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="hidden lg:block w-2/5 relative bg-emerald-900 overflow-hidden">
-             {/* Sprout Visual Engine */}
              <div className="absolute z-20" style={{ top: '320px', left: '100px' }}>
                 <div className="particle-container absolute inset-0 flex justify-center items-end pointer-events-none">
                     <div className="particle p1"></div><div className="particle p2"></div><div className="particle p3"></div><div className="particle p4"></div>
@@ -256,9 +261,13 @@ const App: React.FC = () => {
         <aside className="w-72 bg-white h-screen border-r border-slate-100 flex flex-col p-8 sticky top-0 no-print">
           <BuanaLogo className="mb-12" />
           <nav className="space-y-2 flex-1">
-            {['dashboard', 'candidates', 'positions'].map(id => (
-              <button key={id} onClick={() => setActiveAdminTab(id as any)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeAdminTab === id ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <span className="capitalize">{id}</span>
+            {[
+                {id: 'dashboard', label: 'Dashboard'},
+                {id: 'candidates', label: 'Data Pelamar'},
+                {id: 'positions', label: 'Manajemen Posisi'}
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setActiveAdminTab(tab.id as any)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeAdminTab === tab.id ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <span>{tab.label}</span>
               </button>
             ))}
           </nav>
@@ -275,21 +284,59 @@ const App: React.FC = () => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Selesai Tes</p>
                   <h3 className="text-4xl font-black text-slate-800">{adminStats.completed}</h3>
                </div>
+               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 border-b-8 border-b-amber-500">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Lowongan Aktif</p>
+                  <h3 className="text-4xl font-black text-slate-800">{adminStats.activePositions}</h3>
+               </div>
             </div>
           )}
           {activeAdminTab === 'candidates' && (
             <div className="bg-white rounded-[3rem] p-12 shadow-sm border border-slate-100">
-               <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase">Kandidat</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase">Status</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase text-right">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">
-                {allCandidates.map(c => (
-                  <tr key={c.id}>
-                    <td className="px-8 py-10"><p className="font-bold text-slate-800">{c.name}</p><p className="text-xs text-slate-400">{c.appliedPosition}</p></td>
-                    <td className="px-8 py-10"><span className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase">{c.status}</span></td>
-                    <td className="px-8 py-10 text-right"><div className="flex justify-end gap-3"><button onClick={() => handleDeleteCandidate(c.id, c.name)} className="p-3 text-rose-500 bg-rose-50 rounded-xl">🗑️</button><button onClick={() => setCandidate(c)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase">Laporan</button></div></td>
-                  </tr>
-                ))}</tbody></table></div>
+               <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Database Pelamar Aktif</h3>
+                    <input type="text" placeholder="Cari Nama / WhatsApp..." value={candidateSearch} onChange={e => setCandidateSearch(e.target.value)} className="bg-slate-50 px-6 py-3 rounded-xl border border-slate-100 font-bold text-sm w-72" />
+               </div>
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left">
+                   <thead className="bg-slate-50/50">
+                     <tr>
+                        <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase">Peserta</th>
+                        <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase text-center">Status</th>
+                        <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase text-right">Tindakan</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-100">
+                        {allCandidates.filter(c => c.name.toLowerCase().includes(candidateSearch.toLowerCase())).map(c => (
+                        <tr key={c.id} className="hover:bg-slate-50/50 transition-all">
+                            <td className="px-8 py-10">
+                                <p className="font-bold text-slate-800 text-lg">{c.name}</p>
+                                <p className="text-xs text-slate-400 uppercase font-black tracking-widest">{c.appliedPosition || 'Unknown'} • {c.education || 'N/A'}</p>
+                            </td>
+                            <td className="px-8 py-10 text-center">
+                                <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${c.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{c.status}</span>
+                            </td>
+                            <td className="px-8 py-10 text-right">
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => handleDeleteCandidate(c.id, c.name)} className="p-3 text-rose-500 bg-rose-50 rounded-xl hover:bg-rose-500 hover:text-white transition-all">🗑️</button>
+                                    <button onClick={() => setCandidate(c)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Lihat Laporan ➔</button>
+                                </div>
+                            </td>
+                        </tr>
+                        ))}
+                   </tbody>
+                 </table>
+               </div>
             </div>
           )}
+          {activeAdminTab === 'positions' && <PositionManagement positions={jobPositions} onUpdate={setJobPositions} showToast={showToast} />}
+          {activeAdminTab === 'test_management' && <TestManagement testModules={testModules} onUpdate={() => {}} showToast={showToast} />}
         </main>
+        {candidate && role === UserRole.ADMIN && (
+          <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[150] overflow-y-auto p-12 flex flex-col items-center">
+            <button onClick={() => setCandidate(null)} className="self-end bg-white/10 text-white px-10 py-5 rounded-[2rem] hover:bg-rose-500 mb-12 font-black text-xs uppercase tracking-widest transition-all">Tutup Pratinjau</button>
+            <ReportView candidate={candidate} showToast={showToast} />
+          </div>
+        )}
       </div>
     );
   }
@@ -306,9 +353,11 @@ const App: React.FC = () => {
        </nav>
        <main className="flex-1 p-12 flex items-center justify-center">
          {candidate?.status === 'COMPLETED' ? (
-           <div className="text-center space-y-10 max-w-xl bg-white p-24 rounded-[4rem] shadow-2xl">
+           <div className="text-center space-y-10 max-w-xl bg-white p-24 rounded-[4rem] shadow-2xl border border-slate-50 animate-in zoom-in- duration-700">
+              <div className="w-24 h-24 rounded-[2.5rem] bg-emerald-500 flex items-center justify-center mx-auto shadow-2xl mb-12"><svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg></div>
               <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">Asesmen Selesai</h2>
-              <button onClick={handleLogout} className="w-full text-white py-7 rounded-[2.5rem] font-black text-lg shadow-xl" style={{ background: `linear-gradient(135deg, ${BUANA_GREEN} 0%, #059669 100%)` }}>KELUAR</button>
+              <p className="text-slate-500 font-medium italic text-lg leading-relaxed">Seluruh data Anda telah berhasil disinkronisasi dengan database pusat PT. Buana Megah.</p>
+              <button onClick={handleLogout} className="w-full text-white py-7 rounded-[2.5rem] font-black text-lg shadow-xl hover:scale-105 transition-all" style={{ background: `linear-gradient(135deg, ${BUANA_GREEN} 0%, #059669 100%)` }}>KELUAR & SELESAI</button>
            </div>
          ) : renderActiveTest()}
        </main>

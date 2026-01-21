@@ -10,22 +10,39 @@ if ($method === 'GET') {
         $activePos = $conn->query("SELECT COUNT(*) FROM job_positions WHERE is_active = 1")->fetchColumn();
         
         echo json_encode([
-            "total" => $total,
-            "completed" => $completed,
-            "activePositions" => $activePos,
-            "avgScore" => 78 // Mock score for now
+            "total" => (int)$total,
+            "completed" => (int)$completed,
+            "activePositions" => (int)$activePos,
+            "avgScore" => 78 
         ]);
     } else {
-        // List Candidates
-        $stmt = $conn->prepare("SELECT p.*, j.title as appliedPosition FROM participants p LEFT JOIN job_positions j ON p.job_position_id = j.id ORDER BY p.created_at DESC");
+        // List Candidates with Joins
+        $stmt = $conn->prepare("
+            SELECT p.*, j.title as appliedPosition 
+            FROM participants p 
+            LEFT JOIN job_positions j ON p.job_position_id = j.id 
+            ORDER BY p.created_at DESC
+        ");
         $stmt->execute();
         $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Fetch results summary for each candidate
+        // Ambil hasil tes detail untuk setiap kandidat
         foreach ($candidates as &$c) {
-            $rStmt = $conn->prepare("SELECT test_type FROM test_results WHERE participant_id = ?");
+            $rStmt = $conn->prepare("SELECT test_type, raw_results FROM test_results WHERE participant_id = ?");
             $rStmt->execute([$c['id']]);
-            $c['completedTests'] = $rStmt->fetchAll(PDO::FETCH_COLUMN);
+            $resultsData = $rStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            $c['results'] = [];
+            foreach ($resultsData as $row) {
+                $type = strtolower($row['test_type']);
+                $c['results'][$type] = json_decode($row['raw_results']);
+            }
+            
+            // Map DB fields to Frontend expected fields
+            $c['status'] = $c['test_status'];
+            $c['education'] = $c['education_level'];
+            $c['dob'] = $c['birth_date'];
+            $c['recommendation'] = $c['ai_recommendation'];
         }
         
         echo json_encode($candidates);
