@@ -13,9 +13,7 @@ import TokenRegistry from './components/TokenRegistry';
 
 const BUANA_GREEN = '#10B981';
 const DARK_EMERALD = '#064e3b';
-const SOFT_BG = '#F3F4F6';
-
-const CHART_COLORS = [BUANA_GREEN, '#34D399', '#D1FAE5', '#F59E0B', '#EF4444'];
+const API_BASE = '/api'; // Path ke folder API PHP Anda
 
 const BuanaLogo: React.FC<{ className?: string; color?: string; inverse?: boolean }> = ({ className = "h-8", color = BUANA_GREEN, inverse = false }) => (
   <div className={`flex items-center gap-3 ${className}`}>
@@ -51,29 +49,41 @@ const App: React.FC = () => {
   const [discAnswers, setDiscAnswers] = useState<{ id: number; most: number; least: number }[]>([]);
   const [currentDiscIndex, setCurrentDiscIndex] = useState(0);
 
-  const [testModules, setTestModules] = useState<TestModule[]>([
+  const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [adminStats, setAdminStats] = useState({ total: 0, completed: 0, activePositions: 0, avgScore: 0 });
+
+  const [testModules] = useState<TestModule[]>([
     { id: 'tm_ishihara', title: 'Ishihara Color Vision', type: TestType.ISHIHARA, isActive: true, questionCount: 14, config: {}, questions: Array.from({ length: 14 }, (_, i) => ({ id: `plate-${i+1}`, text: `https://images.unsplash.com/photo-1579546678183-a9c101ad2c22?q=80&w=200&auto=format&fit=crop`, options: [], correctOptionId: '12' })) },
     { id: 'tm_disc', title: 'DISC Gaya Kerja', type: TestType.DISC, isActive: true, questionCount: 24, config: { durationSeconds: 900 } },
     { id: 'tm_kraepelin', title: 'Kraepelin Speed Test', type: TestType.KRAEPELIN, isActive: true, questionCount: 0, config: { timerPerLine: 15, totalLines: 40, digitsPerLine: 45, direction: 'DOWN_TO_UP' } },
   ]);
 
-  const [jobPositions, setJobPositions] = useState<JobPosition[]>([
-    { id: 'pos1', title: 'Machine Operator', department: 'Production', isActive: true, applicantCount: 15, testIds: ['tm_ishihara', 'tm_disc', 'tm_kraepelin'] },
-    { id: 'pos2', title: 'HR Generalist', department: 'HR & GA', isActive: true, applicantCount: 42, testIds: ['tm_disc'] },
-  ]);
-
-  const [allCandidates, setAllCandidates] = useState<Candidate[]>([
-    { id: 'BM-2026-001', name: 'Budi Santoso', status: 'COMPLETED', package: ['tm_ishihara', 'tm_disc', 'tm_kraepelin'], currentTestIndex: 3, appliedPosition: 'Machine Operator', education: 'SMK Teknik', age: 24, whatsapp: '628123456789', address: 'Jl. Raya Beji, Pasuruan', results: { recommendation: 'Highly Recommended' } as any },
-    { id: 'BM-2026-002', name: 'Siti Aminah', status: 'COMPLETED', package: ['tm_disc'], currentTestIndex: 1, appliedPosition: 'HR Generalist', education: 'S1 Psikologi', age: 26, whatsapp: '6287711223344', address: 'Kota Surabaya', results: { recommendation: 'Recommended' } as any },
-  ]);
-
-  const stats = useMemo(() => ({ total: allCandidates.length, completed: allCandidates.filter(c => c.status === 'COMPLETED').length, activePositions: jobPositions.filter(p => p.isActive).length, avgScore: 78 }), [allCandidates, jobPositions]);
-  const monthlyTrends = [{ name: 'Jan', count: 45 }, { name: 'Feb', count: 52 }, { name: 'Mar', count: 38 }, { name: 'Apr', count: 65 }, { name: 'Mei', count: 82 }, { name: 'Jun', count: 95 }];
-  const qualityDistribution = useMemo(() => [{ name: 'Highly Recommended', value: allCandidates.filter(c => c.results?.recommendation === 'Highly Recommended').length }, { name: 'Recommended', value: allCandidates.filter(c => c.results?.recommendation === 'Recommended').length }, { name: 'Consider', value: 1 }, { name: 'Not Recommended', value: 0 }], [allCandidates]);
   const [registration, setRegistration] = useState({ name: '', whatsapp: '', dob: '', education: '', address: '', appliedPositionId: '' });
 
+  // Fetch Positions on Mount
+  useEffect(() => {
+    fetch(`${API_BASE}/positions.php`)
+      .then(res => res.json())
+      .then(data => setJobPositions(data))
+      .catch(err => console.error("Gagal load posisi:", err));
+  }, []);
+
+  // Fetch Admin Data
+  useEffect(() => {
+    if (role === UserRole.ADMIN) {
+      fetch(`${API_BASE}/admin.php?action=stats`)
+        .then(res => res.json())
+        .then(data => setAdminStats(data));
+
+      fetch(`${API_BASE}/admin.php`)
+        .then(res => res.json())
+        .then(data => setAllCandidates(data));
+    }
+  }, [role, activeAdminTab]);
+
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => setToast({ message, type });
-  const handleLogout = () => { setRole(null); setCandidate(null); setActiveTestModule(null); setLoginContext('CANDIDATE'); showToast('Sesi Berakhir', 'info'); };
+  const handleLogout = () => { window.location.reload(); };
   const handleAdminLogin = () => { setRole(UserRole.ADMIN); showToast('Selamat Datang Administrator.', 'success'); };
 
   const startNextTest = (currentCandidate: Candidate) => {
@@ -83,33 +93,64 @@ const App: React.FC = () => {
       const module = testModules.find(m => m.id === nextModuleId);
       if (module) { setActiveTestModule(module); return; }
     }
-    const finalCandidate: Candidate = { ...currentCandidate, status: 'COMPLETED' };
-    setCandidate(finalCandidate);
-    setAllCandidates(prev => prev.map(c => c.id === finalCandidate.id ? finalCandidate : c));
+    setCandidate({ ...currentCandidate, status: 'COMPLETED' });
     setActiveTestModule(null);
-    showToast("Asesmen Selesai.", "success");
   };
 
-  const handleRegisterAndStart = () => {
+  const handleRegisterAndStart = async () => {
     const pos = jobPositions.find(p => p.id === registration.appliedPositionId);
     if (!registration.name || !registration.whatsapp || !registration.address || !pos) { showToast("Data belum lengkap.", "error"); return; }
-    const newCandidate: Candidate = { id: `BM-${Math.random().toString(36).substr(2, 5).toUpperCase()}`, ...registration, age: 25, appliedPosition: pos.title, status: 'IN_PROGRESS', package: pos.testIds, currentTestIndex: 0 };
-    setAllCandidates(prev => [...prev, newCandidate]);
-    setCandidate(newCandidate);
-    setRole(UserRole.CANDIDATE);
-    startNextTest(newCandidate);
+    
+    try {
+      const response = await fetch(`${API_BASE}/register.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registration)
+      });
+      const data = await response.json();
+      
+      const newCandidate: Candidate = { 
+        id: data.id, 
+        ...registration, 
+        age: 25, 
+        appliedPosition: pos.title, 
+        status: 'IN_PROGRESS', 
+        package: pos.testIds, 
+        currentTestIndex: 0 
+      };
+      setCandidate(newCandidate);
+      setRole(UserRole.CANDIDATE);
+      startNextTest(newCandidate);
+    } catch (err) {
+      showToast("Gagal registrasi.", "error");
+    }
   };
 
-  const finishCurrentTest = (testData: any) => {
+  const finishCurrentTest = async (testData: any) => {
     if (!candidate) return;
+
+    const isLast = candidate.currentTestIndex === candidate.package.length - 1;
+    
+    // Kirim ke backend
+    await fetch(`${API_BASE}/submit_test.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participantId: candidate.id,
+        testType: activeTestModule?.type,
+        results: testData,
+        isLast: isLast
+      })
+    });
+
     const updated: Candidate = { ...candidate, currentTestIndex: candidate.currentTestIndex + 1, results: { ...candidate.results, ...testData } };
     setCandidate(updated);
-    setAllCandidates(prev => prev.map(c => c.id === updated.id ? updated : c));
     startNextTest(updated);
   };
 
-  const handleDeleteCandidate = (id: string, name: string) => {
+  const handleDeleteCandidate = async (id: string, name: string) => {
     if (window.confirm(`Hapus data ${name} secara permanen? Seluruh hasil tes akan hilang.`)) {
+      await fetch(`${API_BASE}/admin.php?id=${id}`, { method: 'DELETE' });
       setAllCandidates(prev => prev.filter(c => c.id !== id));
       showToast("Data dihapus.", "success");
     }
@@ -171,7 +212,6 @@ const App: React.FC = () => {
           <div className="w-full lg:w-3/5 p-8 lg:p-20 flex flex-col justify-center relative z-20 bg-white">
             <BuanaLogo className="h-10 mb-10" />
             <h1 className="text-5xl font-black tracking-tight mb-4" style={{ color: DARK_EMERALD }}>{loginContext === 'ADMIN' ? 'Portal Administrasi' : 'Mulai Karir Profesional'}</h1>
-            <p className="text-slate-500 font-medium text-lg leading-relaxed mb-12">Portal seleksi cerdas berbasis AI untuk tenaga kerja masa depan PT. Buana Megah.</p>
             {loginContext === 'ADMIN' ? (
               <div className="space-y-8">
                 <input type="text" placeholder="Identity" className="w-full px-8 py-5 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-emerald-500 focus:bg-white transition-all font-bold text-lg" />
@@ -196,10 +236,8 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="hidden lg:block w-2/5 relative bg-emerald-900 overflow-hidden">
-            <img src="https://images.unsplash.com/photo-1518173946687-a4c8a3b7792e?q=80&w=2070&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover grayscale opacity-40" alt="Factory" />
-            <div className="absolute inset-0 bg-gradient-to-t from-emerald-950/90 via-emerald-900/20 to-transparent"></div>
-            <div className="absolute top-0 bottom-0 left-0 w-24 z-10"><svg className="h-full w-full text-white fill-current" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M0 0 C 70 0 30 50 30 50 C 30 50 70 100 0 100 L 0 100 Z" /></svg></div>
-            <div className="absolute z-20" style={{ top: '320px', left: '100px' }}>
+             {/* Sprout Visual Engine */}
+             <div className="absolute z-20" style={{ top: '320px', left: '100px' }}>
                 <div className="particle-container absolute inset-0 flex justify-center items-end pointer-events-none">
                     <div className="particle p1"></div><div className="particle p2"></div><div className="particle p3"></div><div className="particle p4"></div>
                 </div>
@@ -218,16 +256,9 @@ const App: React.FC = () => {
         <aside className="w-72 bg-white h-screen border-r border-slate-100 flex flex-col p-8 sticky top-0 no-print">
           <BuanaLogo className="mb-12" />
           <nav className="space-y-2 flex-1">
-            {[
-              { id: 'dashboard', label: 'Executive Summary', icon: 'M4 6h16M4 12h16M4 18h16' },
-              { id: 'monitoring', label: 'Live Monitoring', icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z' },
-              { id: 'candidates', label: 'Database Pelamar', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
-              { id: 'positions', label: 'Manajemen Posisi', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1' },
-              { id: 'test_management', label: 'Bank Soal & Config', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-            ].map(item => (
-              <button key={item.id} onClick={() => setActiveAdminTab(item.id as any)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeAdminTab === item.id ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={item.icon} /></svg>
-                {item.label}
+            {['dashboard', 'candidates', 'positions'].map(id => (
+              <button key={id} onClick={() => setActiveAdminTab(id as any)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeAdminTab === id ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <span className="capitalize">{id}</span>
               </button>
             ))}
           </nav>
@@ -235,50 +266,30 @@ const App: React.FC = () => {
         </aside>
         <main className="flex-1 p-12 overflow-y-auto">
           {activeAdminTab === 'dashboard' && (
-            <div className="space-y-12">
-               <div className="grid grid-cols-4 gap-8">
-                  {[ { label: 'Total Pelamar', val: stats.total, color: 'emerald' }, { label: 'Selesai Tes', val: stats.completed, color: 'blue' }, { label: 'Lowongan Open', val: stats.activePositions, color: 'amber' }, { label: 'Index Performa', val: stats.avgScore + '%', color: 'slate' } ].map((c, i) => (
-                    <div key={i} className={`bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 border-b-8 border-b-${c.color}-500`}>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{c.label}</p>
-                      <h3 className="text-4xl font-black text-slate-800">{c.val}</h3>
-                    </div>
-                  ))}
+            <div className="grid grid-cols-4 gap-8">
+               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 border-b-8 border-b-emerald-500">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Total Pelamar</p>
+                  <h3 className="text-4xl font-black text-slate-800">{adminStats.total}</h3>
                </div>
-               <div className="grid grid-cols-12 gap-12">
-                  <div className="col-span-8 bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100">
-                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-10">Tren Rekrutmen Bulanan</h4>
-                     <div className="h-[300px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={monthlyTrends}><defs><linearGradient id="col" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={BUANA_GREEN} stopOpacity={0.3}/><stop offset="95%" stopColor={BUANA_GREEN} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis hide /><Tooltip /><Area type="monotone" dataKey="count" stroke={BUANA_GREEN} strokeWidth={6} fill="url(#col)" /></AreaChart></ResponsiveContainer></div>
-                  </div>
-                  <div className="col-span-4 bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-10 text-center">Distribusi Kualitas</h4><div className="h-[250px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={qualityDistribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{qualityDistribution.map((_, idx) => <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div></div>
+               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 border-b-8 border-b-blue-500">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Selesai Tes</p>
+                  <h3 className="text-4xl font-black text-slate-800">{adminStats.completed}</h3>
                </div>
             </div>
           )}
           {activeAdminTab === 'candidates' && (
             <div className="bg-white rounded-[3rem] p-12 shadow-sm border border-slate-100">
-               <div className="flex justify-between items-center mb-12">
-                  <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Database Pelamar</h3>
-                  <input type="text" placeholder="Cari..." value={candidateSearch} onChange={e => setCandidateSearch(e.target.value)} className="bg-slate-50 px-8 py-4 rounded-2xl border-2 border-transparent focus:border-emerald-500 focus:bg-white transition-all w-96 shadow-sm font-bold" />
-               </div>
-               <div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-slate-50/50"><tr><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kandidat</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Posisi</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">{allCandidates.filter(c => c.name.toLowerCase().includes(candidateSearch.toLowerCase())).map(c => (
-                  <tr key={c.id} className="hover:bg-slate-50/50 transition-all">
-                    <td className="px-8 py-10"><p className="font-bold text-slate-800 text-lg">{c.name}</p><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{c.education} • {c.age} thn</p></td>
-                    <td className="px-8 py-10"><span className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">{c.appliedPosition}</span></td>
-                    <td className="px-8 py-10 text-center"><span className={`inline-flex px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest ${c.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{c.status}</span></td>
-                    <td className="px-8 py-10 text-right"><div className="flex justify-end gap-3"><button onClick={() => handleDeleteCandidate(c.id, c.name)} className="p-3 rounded-xl bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-600 hover:text-white transition-all shadow-sm"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button><button onClick={() => setCandidate(c)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all hover:scale-105">Laporan ➔</button></div></td>
+               <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase">Kandidat</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase">Status</th><th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase text-right">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">
+                {allCandidates.map(c => (
+                  <tr key={c.id}>
+                    <td className="px-8 py-10"><p className="font-bold text-slate-800">{c.name}</p><p className="text-xs text-slate-400">{c.appliedPosition}</p></td>
+                    <td className="px-8 py-10"><span className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase">{c.status}</span></td>
+                    <td className="px-8 py-10 text-right"><div className="flex justify-end gap-3"><button onClick={() => handleDeleteCandidate(c.id, c.name)} className="p-3 text-rose-500 bg-rose-50 rounded-xl">🗑️</button><button onClick={() => setCandidate(c)} className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase">Laporan</button></div></td>
                   </tr>
-               ))}</tbody></table></div>
+                ))}</tbody></table></div>
             </div>
           )}
-          {activeAdminTab === 'monitoring' && <TokenRegistry />}
-          {activeAdminTab === 'positions' && <PositionManagement positions={jobPositions} onUpdate={setJobPositions} showToast={showToast} />}
-          {activeAdminTab === 'test_management' && <TestManagement testModules={testModules} onUpdate={setTestModules} showToast={showToast} />}
         </main>
-        {candidate && role === UserRole.ADMIN && (
-          <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[150] overflow-y-auto p-12 flex flex-col items-center">
-            <button onClick={() => setCandidate(null)} className="self-end bg-white/10 text-white px-10 py-5 rounded-[2rem] hover:bg-rose-500 mb-12 font-black text-xs uppercase tracking-widest transition-all">Tutup Pratinjau</button>
-            <ReportView candidate={candidate} showToast={showToast} />
-          </div>
-        )}
       </div>
     );
   }
@@ -295,11 +306,9 @@ const App: React.FC = () => {
        </nav>
        <main className="flex-1 p-12 flex items-center justify-center">
          {candidate?.status === 'COMPLETED' ? (
-           <div className="text-center space-y-10 max-w-xl bg-white p-24 rounded-[4rem] shadow-2xl animate-in zoom-in-95 duration-700">
-              <div className="w-24 h-24 rounded-[2.5rem] bg-emerald-500 flex items-center justify-center mx-auto shadow-2xl mb-12"><svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg></div>
-              <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">Asesmen Selesai</h2>
-              <p className="text-slate-500 font-medium italic text-lg leading-relaxed">Terima kasih. Seluruh jawaban Anda telah tersimpan. Data Anda akan diproses oleh Tim HR PT. Buana Megah.</p>
-              <button onClick={handleLogout} className="w-full text-white py-7 rounded-[2.5rem] font-black text-lg shadow-xl hover:scale-105 transition-all" style={{ background: `linear-gradient(135deg, ${BUANA_GREEN} 0%, #059669 100%)` }}>KELUAR HALAMAN</button>
+           <div className="text-center space-y-10 max-w-xl bg-white p-24 rounded-[4rem] shadow-2xl">
+              <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">Asesmen Selesai</h2>
+              <button onClick={handleLogout} className="w-full text-white py-7 rounded-[2.5rem] font-black text-lg shadow-xl" style={{ background: `linear-gradient(135deg, ${BUANA_GREEN} 0%, #059669 100%)` }}>KELUAR</button>
            </div>
          ) : renderActiveTest()}
        </main>

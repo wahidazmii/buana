@@ -1,56 +1,60 @@
 
 -- PsychoMetric AI - PT. BUANA MEGAH
--- System Architecture Blueprint: Database Schema v1.2
+-- SQL Schema v2.0 (PHP Backend Compatible)
 
--- Table for Job Positions (Open Vacancies)
+CREATE DATABASE IF NOT EXISTS buana_psychometric;
+USE buana_psychometric;
+
+-- 1. TABEL POSISI (Lowongan Aktif)
 CREATE TABLE job_positions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(100) NOT NULL,
-    department VARCHAR(100) NOT NULL,
+    department VARCHAR(100),
     is_active BOOLEAN DEFAULT TRUE,
-    test_package JSON, -- e.g. ["tm_disc", "tm_kraepelin"]
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table for Participants (Candidates)
+-- 2. TABEL PESERTA
 CREATE TABLE participants (
-    id VARCHAR(50) PRIMARY KEY, -- e.g. BM-2026-X99
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     whatsapp VARCHAR(20) NOT NULL,
     address TEXT NOT NULL,
+    birth_date DATE,
     education_level VARCHAR(50),
-    age INT,
     job_position_id INT,
-    current_status ENUM('PENDING', 'IN_PROGRESS', 'COMPLETED') DEFAULT 'PENDING',
+    session_token VARCHAR(255),
+    test_status ENUM('PENDING', 'IN_PROGRESS', 'COMPLETED') DEFAULT 'PENDING',
+    ai_recommendation VARCHAR(50) DEFAULT 'Consider with Notes',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (job_position_id) REFERENCES job_positions(id) ON DELETE SET NULL
 );
 
--- Table for DISC Mapping (Personality Engine)
-CREATE TABLE disc_questions (
+-- 3. TABEL MAPPING TES
+CREATE TABLE position_test_mappings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    group_id INT NOT NULL, -- 1-24
-    statement_1 VARCHAR(255),
-    type_1 CHAR(1), -- 'D', 'I', 'S', 'C', or '*'
-    statement_2 VARCHAR(255),
-    type_2 CHAR(1),
-    statement_3 VARCHAR(255),
-    type_3 CHAR(1),
-    statement_4 VARCHAR(255),
-    type_4 CHAR(1)
+    job_position_id INT,
+    test_type VARCHAR(20), -- 'DISC', 'KRAEPELIN', 'ISHIHARA'
+    sequence INT,
+    FOREIGN KEY (job_position_id) REFERENCES job_positions(id) ON DELETE CASCADE
 );
 
--- Table for Test Results (Serialized Blobs for Analysis)
+-- 4. TABEL HASIL TES (JSON Storage)
 CREATE TABLE test_results (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    participant_id VARCHAR(50),
+    participant_id INT,
     test_type VARCHAR(20),
-    raw_data JSON, -- Stores calculation metrics (e.g., Panker, Tianker)
-    interpretation TEXT, -- AI-generated narrative
-    recommendation VARCHAR(50),
+    raw_results JSON, -- Menyimpan jawaban mentah atau skor
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE CASCADE
 );
 
--- Indexing for Dashboard Speed
-CREATE INDEX idx_participant_status ON participants(current_status);
-CREATE INDEX idx_job_active ON job_positions(is_active);
+-- DATA AWAL (Dummy untuk testing)
+INSERT INTO job_positions (title, department, is_active) VALUES 
+('Machine Operator', 'Production', 1),
+('HR Generalist', 'HR & GA', 1),
+('Quality Control', 'QA', 0);
+
+INSERT INTO position_test_mappings (job_position_id, test_type, sequence) VALUES 
+(1, 'ISHIHARA', 1), (1, 'DISC', 2), (1, 'KRAEPELIN', 3),
+(2, 'DISC', 1);
