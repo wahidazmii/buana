@@ -42,13 +42,16 @@ export interface JobPosition {
   department: string;
   isActive: boolean;
   applicantCount: number;
-  testIds: string[];
+  description?: string;
+  testIds: string[]; // Sequential list of TestModule IDs
 }
 
 export interface QuestionOption {
   id: string;
   text: string;
-  dimension?: string;
+  isCorrect?: boolean;
+  weight?: number;
+  dimension?: string; // Added for DISC/PAPI mapping
 }
 
 export interface Question {
@@ -56,19 +59,14 @@ export interface Question {
   text: string;
   options: QuestionOption[];
   correctOptionId?: string;
+  category?: string;
 }
 
-// Added DiscQuestion interface to support constants.ts
 export interface DiscQuestion {
   id: number;
-  options: {
-    text: string;
-    most: string;
-    least: string;
-  }[];
+  options: { text: string; most: string; least: string }[];
 }
 
-// Added PapiQuestion interface to support constants.ts
 export interface PapiQuestion {
   id: number;
   pair: {
@@ -99,12 +97,11 @@ export interface TestModule {
 export interface Candidate {
   id: string;
   name: string;
+  email?: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
-  package: string[];
-  currentTestIndex: number;
+  package: string[]; // Sequence of test module IDs
+  currentTestIndex: number; // Tracker for the sequence
   appliedPosition?: string;
-  // Fix: Added appliedPositionId to Candidate interface to resolve property access error in apiService.ts line 125
-  appliedPositionId?: string;
   whatsapp?: string;
   address?: string;
   dob?: string;
@@ -135,7 +132,6 @@ export interface TestResults {
     workCurve: number[];
   };
   mcqScores?: Record<string, number>;
-  ishihara?: { score: number; status: string; totalPlates: number };
   aiReport?: AIReportSections;
   recommendation?: RecommendationLevel;
 }

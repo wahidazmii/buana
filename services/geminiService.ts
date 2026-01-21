@@ -1,11 +1,15 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { TestResults, RecommendationLevel, AIReportSections } from "../types";
 
-const MODEL_NAME = 'gemini-3-pro-preview';
+const MODEL_NAME = 'gemini-pro';
 
-export const generatePsychologicalReport = async (results: TestResults, candidateName: string, position: string = "Kandidat"): Promise<{ sections: AIReportSections, recommendation: RecommendationLevel }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const generatePsychologicalReport = async (results: TestResults, candidateName: string, position: string = "Kandidat", apiKey?: string): Promise<{ sections: AIReportSections, recommendation: RecommendationLevel }> => {
+  const finalKey = apiKey || process.env.GEMINI_API_KEY;
+  if (!finalKey) throw new Error("Missing Gemini API Key. Please configure it in the Admin Settings.");
+
+  const genAI = new GoogleGenerativeAI(finalKey);
+  const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
   // CONTEXT: Senior Industrial Psychologist persona with modular instructions
   // Fix: Added null checks for results.kraepelin to prevent toFixed() errors if the test was skipped or failed.
@@ -16,7 +20,6 @@ export const generatePsychologicalReport = async (results: TestResults, candidat
     
     DATA MENTAH:
     - DISC: ${JSON.stringify(results.disc?.raw || null)}
-    - PAPI: ${JSON.stringify(results.papi || null)}
     - KRAEPELIN: Kecepatan ${results.kraepelin ? results.kraepelin.panker.toFixed(2) : 'N/A'}, Ketelitian ${results.kraepelin ? (100 - (results.kraepelin.tianker || 0)).toFixed(2) : 'N/A'}%, Kestabilan ${results.kraepelin?.janker || 'N/A'}, Tren ${results.kraepelin?.trend || 'N/A'}.
     
     INSTRUKSI MODUL:
@@ -24,7 +27,7 @@ export const generatePsychologicalReport = async (results: TestResults, candidat
     MODUL A (Executive Summary): 
     Berikan kesimpulan "Helicopter View" dalam 1 paragraf padat (maks 60 kata). Kalimat indikatif, nada objektif, formal, dan tegas. Fokus pada potensi utama, risiko, dan rekomendasi posisi.
     
-    MODUL B (Kepribadian DISC/PAPI): 
+    MODUL B (Kepribadian DISC): 
     Analisis gaya kerja, komunikasi, pengambilan keputusan, dan potensi konflik. Hindari definisi teoritis, langsung bahas perilaku nyata kandidat.
     
     MODUL C (Ketahanan Kraepelin): 
@@ -52,17 +55,10 @@ export const generatePsychologicalReport = async (results: TestResults, candidat
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: {
-        temperature: 0.3, // Consistent professional tone
-        topP: 0.8,
-      }
-    });
-    
-    const text = response.text || "";
-    
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
     const extract = (marker: string, nextMarker?: string) => {
       const start = text.indexOf(marker);
       if (start === -1) return "Data tidak tersedia.";
@@ -88,15 +84,15 @@ export const generatePsychologicalReport = async (results: TestResults, candidat
     return { sections, recommendation };
   } catch (error) {
     console.error("AI Report Generation Error:", error);
-    return { 
-      sections: { 
-        executiveSummary: "Gagal generate analisis.", 
-        personalityAnalysis: "Error API.", 
-        performanceAnalysis: "Error API.", 
-        interviewGuide: "Error API.", 
-        fullText: "" 
-      }, 
-      recommendation: 'Consider with Notes' 
+    return {
+      sections: {
+        executiveSummary: "Gagal generate analisis.",
+        personalityAnalysis: "Error API.",
+        performanceAnalysis: "Error API.",
+        interviewGuide: "Error API.",
+        fullText: ""
+      },
+      recommendation: 'Consider with Notes'
     };
   }
 };

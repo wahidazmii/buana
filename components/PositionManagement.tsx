@@ -4,49 +4,46 @@ import { JobPosition } from '../types';
 
 interface PositionManagementProps {
   positions: JobPosition[];
-  onUpdate: (positions: JobPosition[]) => void;
+  onSave: (pos: any) => Promise<boolean>;
+  onDelete: (id: string) => Promise<void>;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onUpdate, showToast }) => {
+const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onSave, onDelete, showToast }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [editingPos, setEditingPos] = useState<JobPosition | null>(null);
   const [formData, setFormData] = useState({ title: '', department: '', isActive: true, testIds: [] as string[] });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleToggle = (id: string) => {
-    const updated = positions.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p);
-    onUpdate(updated);
-    showToast("Status lowongan diperbarui.", "info");
+  const handleToggle = async (pos: JobPosition) => {
+    const success = await onSave({ ...pos, isActive: !pos.isActive });
+    if (success) showToast("Status lowongan diperbarui.", "info");
   };
 
-  const handleDelete = (pos: JobPosition) => {
+  const handleDelete = async (pos: JobPosition) => {
     if (pos.applicantCount > 0) {
       showToast(`Posisi memiliki pelamar aktif. Tidak dapat dihapus.`, "error");
       return;
     }
-    onUpdate(positions.filter(p => p.id !== pos.id));
-    showToast("Posisi berhasil dihapus.", "success");
+    await onDelete(pos.id);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.title || !formData.department) {
       showToast("Lengkapi data wajib posisi.", "error");
       return;
     }
-    if (editingPos) {
-      onUpdate(positions.map(p => p.id === editingPos.id ? { ...p, ...formData } : p));
-      showToast("Data posisi diperbarui.", "success");
-    } else {
-      const newPos: JobPosition = { 
-        id: Math.random().toString(36).substr(2, 9), 
-        ...formData, 
-        applicantCount: 0 
-      };
-      onUpdate([...positions, newPos]);
-      showToast("Posisi baru ditambahkan.", "success");
+
+    setIsSaving(true);
+    const posToSave = editingPos ? { ...formData, id: editingPos.id } : formData;
+    const success = await onSave(posToSave);
+    setIsSaving(false);
+
+    if (success) {
+      showToast(editingPos ? "Data posisi diperbarui." : "Posisi baru ditambahkan.", "success");
+      closeModal();
     }
-    closeModal();
   };
 
   const openModal = (pos?: JobPosition) => {
@@ -68,15 +65,15 @@ const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onUp
   const toggleTestSelection = (testId: string) => {
     setFormData(prev => {
       const isSelected = prev.testIds.includes(testId);
-      const newTestIds = isSelected 
-        ? prev.testIds.filter(id => id !== testId) 
+      const newTestIds = isSelected
+        ? prev.testIds.filter(id => id !== testId)
         : [...prev.testIds, testId];
       return { ...prev, testIds: newTestIds };
     });
   };
 
-  const filtered = positions.filter(p => 
-    p.title.toLowerCase().includes(search.toLowerCase()) || 
+  const filtered = (positions || []).filter(p =>
+    p.title.toLowerCase().includes(search.toLowerCase()) ||
     p.department.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -111,9 +108,9 @@ const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onUp
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{pos.department}</p>
                   </td>
                   <td className="px-10 py-8 text-center">
-                     <button onClick={() => handleToggle(pos.id)} className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${pos.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                       {pos.isActive ? 'Buka' : 'Tutup'}
-                     </button>
+                    <button onClick={() => handleToggle(pos)} className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${pos.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                      {pos.isActive ? 'Buka' : 'Tutup'}
+                    </button>
                   </td>
                   <td className="px-10 py-8 text-center">
                     <div className="flex flex-wrap justify-center gap-1">
@@ -124,8 +121,8 @@ const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onUp
                   </td>
                   <td className="px-10 py-8 text-right">
                     <div className="flex justify-end gap-3">
-                       <button onClick={() => openModal(pos)} className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                       <button onClick={() => handleDelete(pos)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                      <button onClick={() => openModal(pos)} className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                      <button onClick={() => handleDelete(pos)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                     </div>
                   </td>
                 </tr>
@@ -137,41 +134,43 @@ const PositionManagement: React.FC<PositionManagementProps> = ({ positions, onUp
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={closeModal}></div>
-           <div className="relative bg-white w-full max-w-lg rounded-[3rem] shadow-2xl p-12 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-2xl font-black text-slate-900 tracking-tighter mb-8">{editingPos ? 'Edit Konfigurasi Posisi' : 'Tambah Posisi Baru'}</h3>
-              <div className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Jabatan</label>
-                  <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-7 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold focus:border-emerald-500 focus:bg-white transition-all outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Departemen / Divisi</label>
-                  <input type="text" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full px-7 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold focus:border-emerald-500 focus:bg-white transition-all outline-none" />
-                </div>
-                
-                <div className="pt-4">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1 block">Rangkaian Tes (Wajib Dikerjakan)</label>
-                  <div className="space-y-3">
-                    {['tm_disc', 'tm_kraepelin', 'tm_k3'].map(tid => (
-                      <label key={tid} className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border-2 border-transparent hover:border-emerald-100 cursor-pointer transition-all">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.testIds.includes(tid)} 
-                          onChange={() => toggleTestSelection(tid)}
-                          className="w-5 h-5 accent-emerald-500"
-                        />
-                        <span className="font-bold text-slate-700 text-sm uppercase tracking-tight">{tid.split('_')[1].toUpperCase()} Modul Tes</span>
-                      </label>
-                    ))}
-                  </div>
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={closeModal}></div>
+          <div className="relative bg-white w-full max-w-lg rounded-[3rem] shadow-2xl p-12 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black text-slate-900 tracking-tighter mb-8">{editingPos ? 'Edit Konfigurasi Posisi' : 'Tambah Posisi Baru'}</h3>
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Jabatan</label>
+                <input type="text" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className="w-full px-7 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold focus:border-emerald-500 focus:bg-white transition-all outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Departemen / Divisi</label>
+                <input type="text" value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} className="w-full px-7 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold focus:border-emerald-500 focus:bg-white transition-all outline-none" />
+              </div>
+
+              <div className="pt-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1 block">Rangkaian Tes (Wajib Dikerjakan)</label>
+                <div className="space-y-3">
+                  {['tm_disc', 'tm_kraepelin', 'tm_k3'].map(tid => (
+                    <label key={tid} className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border-2 border-transparent hover:border-emerald-100 cursor-pointer transition-all">
+                      <input
+                        type="checkbox"
+                        checked={formData.testIds.includes(tid)}
+                        onChange={() => toggleTestSelection(tid)}
+                        className="w-5 h-5 accent-emerald-500"
+                      />
+                      <span className="font-bold text-slate-700 text-sm uppercase tracking-tight">{tid.split('_')[1].toUpperCase()} Modul Tes</span>
+                    </label>
+                  ))}
                 </div>
               </div>
-              <div className="flex gap-4 mt-12">
-                <button onClick={closeModal} className="flex-1 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest text-slate-400">Batal</button>
-                <button onClick={handleSave} className="flex-[2] bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-600/20">Simpan Perubahan</button>
-              </div>
-           </div>
+            </div>
+            <div className="flex gap-4 mt-12">
+              <button onClick={closeModal} className="flex-1 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest text-slate-400">Batal</button>
+              <button onClick={handleSave} disabled={isSaving} className="flex-[2] bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-600/20 disabled:opacity-50">
+                {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

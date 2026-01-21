@@ -12,12 +12,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $token = bin2hex(random_bytes(32));
-        
-        $stmt = $conn->prepare("INSERT INTO participants (name, whatsapp, address, job_position_id, session_token, test_status) VALUES (?, ?, ?, ?, ?, 'IN_PROGRESS')");
+
+        $stmt = $conn->prepare("INSERT INTO participants (name, whatsapp, address, education_level, birth_date, job_position_id, session_token, test_status) VALUES (?, ?, ?, ?, ?, ?, ?, 'IN_PROGRESS')");
         $stmt->execute([
             $data->name,
             $data->whatsapp,
             $data->address ?? '',
+            $data->education ?? '',
+            $data->dob ?? null,
             $data->appliedPositionId,
             $token
         ]);
