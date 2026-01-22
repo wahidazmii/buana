@@ -4,21 +4,13 @@ require_once 'db.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents("php://input"));
 
-    if (!isset($data->participantId) || !isset($data->testType) || !isset($data->results) || !isset($data->token)) {
+    if (!isset($data->participantId) || !isset($data->testType) || !isset($data->results)) {
         http_response_code(400);
         echo json_encode(["error" => "Payload tidak valid"]);
         exit();
     }
 
     try {
-        // Verify token
-        $vStmt = $conn->prepare("SELECT id FROM participants WHERE id = ? AND session_token = ?");
-        $vStmt->execute([$data->participantId, $data->token]);
-        if (!$vStmt->fetch()) {
-            http_response_code(401);
-            echo json_encode(["error" => "Sesi tidak valid"]);
-            exit();
-        }
         $stmt = $conn->prepare("INSERT INTO test_results (participant_id, test_type, raw_results) VALUES (?, ?, ?)");
         $stmt->execute([
             $data->participantId,
