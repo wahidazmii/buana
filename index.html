@@ -22,6 +22,29 @@
         }
         .print-only { display: none; }
 
+        /* Blob Animations */
+        @keyframes blob {
+          0% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+          100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+
+        /* Input Autofill Hack */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus {
+            -webkit-text-fill-color: white;
+            -webkit-box-shadow: 0 0 0px 1000px #064E3B inset;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+
         .particle {
             position: absolute; width: 4px; height: 4px; background-color: #1BE40F; border-radius: 50%; opacity: 0; bottom: 0;
             animation: floatUp 3.5s infinite ease-out; filter: blur(0.5px);
@@ -49,7 +72,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-50 text-slate-900 overflow-x-hidden">
+<body class="bg-[#0f2e26] text-slate-900 overflow-x-hidden">
     <div id="root"></div>
 </body>
 </html>

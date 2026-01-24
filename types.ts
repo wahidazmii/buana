@@ -4,7 +4,8 @@ export enum TestType {
   PAPI = 'PAPI',
   KRAEPELIN = 'KRAEPELIN',
   ISHIHARA = 'ISHIHARA',
-  MCQ = 'MCQ'
+  MCQ = 'MCQ',
+  ESSAY = 'ESSAY'
 }
 
 export enum UserRole {
@@ -56,9 +57,9 @@ export interface Question {
   text: string;
   options: QuestionOption[];
   correctOptionId?: string;
+  imageUrl?: string;
 }
 
-// Added DiscQuestion interface to support constants.ts
 export interface DiscQuestion {
   id: number;
   options: {
@@ -68,7 +69,6 @@ export interface DiscQuestion {
   }[];
 }
 
-// Added PapiQuestion interface to support constants.ts
 export interface PapiQuestion {
   id: number;
   pair: {
@@ -93,7 +93,7 @@ export interface TestModule {
   isActive: boolean;
   questionCount: number;
   config: TestConfiguration;
-  questions?: Question[];
+  questions?: any[]; 
 }
 
 export interface Candidate {
@@ -103,7 +103,6 @@ export interface Candidate {
   package: string[];
   currentTestIndex: number;
   appliedPosition?: string;
-  // Fix: Added appliedPositionId to Candidate interface to resolve property access error in apiService.ts line 125
   appliedPositionId?: string;
   whatsapp?: string;
   address?: string;

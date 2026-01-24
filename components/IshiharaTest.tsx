@@ -16,10 +16,12 @@ const IshiharaTest: React.FC<IshiharaTestProps> = ({ questions, onComplete }) =>
   const currentPlate = questions[currentIndex];
 
   useEffect(() => {
-    // Preload images
+    // Preload images for smooth transition
     questions.forEach(q => {
-      const img = new Image();
-      img.src = q.text; // Assuming 'text' contains the image URL for Ishihara
+      if (q.imageUrl) {
+        const img = new Image();
+        img.src = q.imageUrl;
+      }
     });
   }, [questions]);
 
@@ -91,7 +93,7 @@ const IshiharaTest: React.FC<IshiharaTestProps> = ({ questions, onComplete }) =>
       </div>
 
       <div className="w-64 h-64 md:w-80 md:h-80 mb-10 rounded-full shadow-2xl overflow-hidden border-8 border-white bg-white flex items-center justify-center">
-        {currentPlate && <img src={currentPlate.text} className="w-full h-full object-contain animate-in zoom-in-50 duration-500" alt="Ishihara Plate" />}
+        {currentPlate && <img src={currentPlate.imageUrl} className="w-full h-full object-contain animate-in zoom-in-50 duration-500" alt="Ishihara Plate" />}
       </div>
 
       <div className="mb-10 text-center space-y-2">
