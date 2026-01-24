@@ -6,7 +6,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     if (isset($_GET['action']) && $_GET['action'] == 'stats') {
         $total = $conn->query("SELECT COUNT(*) FROM participants")->fetchColumn();
-        $completed = $conn->query("SELECT COUNT(*) FROM participants WHERE test_status = 'COMPLETED'")->fetchColumn();
+        $completed = $conn->query("SELECT COUNT(*) FROM participants WHERE status = 'COMPLETED'")->fetchColumn();
         $activePos = $conn->query("SELECT COUNT(*) FROM job_positions WHERE is_active = 1")->fetchColumn();
         
         echo json_encode([
@@ -16,7 +16,6 @@ if ($method === 'GET') {
             "avgScore" => 78 
         ]);
     } else {
-        // List Candidates with Joins
         $stmt = $conn->prepare("
             SELECT p.*, j.title as appliedPosition 
             FROM participants p 
@@ -26,7 +25,6 @@ if ($method === 'GET') {
         $stmt->execute();
         $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Ambil hasil tes detail untuk setiap kandidat
         foreach ($candidates as &$c) {
             $rStmt = $conn->prepare("SELECT test_type, raw_results FROM test_results WHERE participant_id = ?");
             $rStmt->execute([$c['id']]);
@@ -38,8 +36,6 @@ if ($method === 'GET') {
                 $c['results'][$type] = json_decode($row['raw_results']);
             }
             
-            // Map DB fields to Frontend expected fields
-            $c['status'] = $c['test_status'];
             $c['education'] = $c['education_level'];
             $c['dob'] = $c['birth_date'];
             $c['recommendation'] = $c['ai_recommendation'];

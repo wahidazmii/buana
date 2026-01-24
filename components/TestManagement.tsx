@@ -1,153 +1,500 @@
-
 import React, { useState } from 'react';
 import { TestModule, TestType, Question, TestConfiguration, DiscQuestion, PapiQuestion } from '../types';
 import { api } from '../services/apiService';
-
-interface TestManagementProps { 
-  testModules: TestModule[]; 
-  onUpdate: (modules: TestModule[]) => void; 
-  showToast: (msg: string, type: 'success' | 'error' | 'info') => void; 
-}
 
 const DISCEditor: React.FC<{ module: TestModule, onSave: (m: TestModule) => void }> = ({ module, onSave }) => {
   const [questions, setQuestions] = useState<DiscQuestion[]>(module.questions || []);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const updateQ = (data: Partial<DiscQuestion>) => {
-    const newQs = [...questions];
-    newQs[activeIndex] = { ...newQs[activeIndex], ...data };
-    setQuestions(newQs);
+  const updateQuestion = (qIndex: number, optIndex: number, field: 'text' | 'val', value: string) => {
+    const newQuestions = [...questions];
+    const targetQ = { ...newQuestions[qIndex] };
+    targetQ.options = [...targetQ.options];
+    targetQ.options[optIndex] = { ...targetQ.options[optIndex] };
+    
+    if (field === 'text') {
+      targetQ.options[optIndex].text = value;
+    } else {
+      targetQ.options[optIndex].most = value;
+      targetQ.options[optIndex].least = value;
+    }
+    
+    newQuestions[qIndex] = targetQ;
+    setQuestions(newQuestions);
   };
 
-  const handleSave = () => onSave({ ...module, questions, questionCount: questions.length });
+  const handleAddQuestion = () => {
+    const newId = questions.length + 1;
+    const newQs = [
+      ...questions, 
+      {
+        id: newId,
+        options: [
+          { text: "Pernyataan Watak Dominance...", most: "D", least: "D" },
+          { text: "Pernyataan Watak Influence...", most: "I", least: "I" },
+          { text: "Pernyataan Watak Steadiness...", most: "S", least: "S" },
+          { text: "Pernyataan Watak Compliance...", most: "C", least: "C" }
+        ]
+      }
+    ];
+    setQuestions(newQs);
+    setActiveIndex(newQs.length - 1);
+  };
 
-  const currentQ = questions[activeIndex] || { id: activeIndex + 1, options: Array(4).fill({ text: '', most: 'D', least: 'D' }) };
+  const handleDeleteQuestion = () => {
+    const newQs = questions.filter((_, i) => i !== activeIndex);
+    setQuestions(newQs);
+    setActiveIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const handleSave = () => {
+    onSave({ ...module, questions, questionCount: questions.length });
+  };
+
+  const currentQ = questions[activeIndex];
+  const checkBalance = () => {
+    if (!currentQ) return { balanced: true, missing: [] };
+    const counts = { D: 0, I: 0, S: 0, C: 0 };
+    currentQ.options.forEach(o => { 
+      if(['D','I','S','C'].includes(o.most)) {
+        counts[o.most as keyof typeof counts]++;
+      }
+    });
+    const missing = Object.keys(counts).filter(k => counts[k as keyof typeof counts] === 0);
+    return { balanced: missing.length === 0, missing };
+  };
+
+  const balanceStatus = checkBalance();
+  const colors: Record<string, string> = { 
+    D: 'bg-rose-100 text-rose-700 border-rose-200', 
+    I: 'bg-amber-100 text-amber-700 border-amber-200', 
+    S: 'bg-emerald-100 text-emerald-700 border-emerald-200', 
+    C: 'bg-blue-100 text-blue-700 border-blue-200' 
+  };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-500">
-      <div className="w-full lg:w-64 bg-slate-50 p-6 rounded-3xl overflow-y-auto max-h-[650px] border border-slate-100 shadow-inner">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-2">Navigator DISC</p>
-        <div className="grid grid-cols-4 lg:grid-cols-2 gap-3">
+    <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in duration-500">
+      <div className="w-full xl:w-72 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col h-[650px]">
+        <div className="flex justify-between items-center mb-6 px-2">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Navigator Soal</p>
+          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold">{questions.length} Butir</span>
+        </div>
+        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-4 gap-2 content-start">
           {questions.map((_, i) => (
-            <button key={i} onClick={() => setActiveIndex(i)} className={`h-14 rounded-2xl font-black text-xs transition-all ${activeIndex === i ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-600/30' : 'bg-white text-slate-400 border border-slate-100 hover:border-emerald-200'}`}>
+            <button 
+              key={i} 
+              onClick={() => setActiveIndex(i)} 
+              className={`aspect-square rounded-xl font-black text-xs transition-all border-2 
+              ${activeIndex === i 
+                ? 'bg-slate-800 text-white border-slate-800 shadow-lg' 
+                : 'bg-white text-slate-400 border-slate-100 hover:border-emerald-400 hover:text-emerald-600'}`}
+            >
               {i + 1}
             </button>
           ))}
-          <button onClick={() => setQuestions([...questions, { id: questions.length + 1, options: Array(4).fill({ text: '', most: 'D', least: 'D' }) }])} className="h-14 rounded-2xl border-4 border-dashed border-slate-200 text-slate-300 font-black text-xl hover:bg-white hover:text-emerald-400 hover:border-emerald-200 transition-all">+</button>
+          <button onClick={handleAddQuestion} className="aspect-square rounded-xl border-2 border-dashed border-emerald-300 text-emerald-500 font-black text-xl hover:bg-emerald-50 transition-all">+</button>
+        </div>
+        <div className="mt-6 pt-6 border-t border-slate-100">
+             <button onClick={handleSave} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-500/20">
+                Simpan Perubahan
+             </button>
         </div>
       </div>
-      <div className="flex-1 space-y-8 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Edit Kelompok No. {activeIndex + 1}</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Mapping Watak DISC Standard 24-Item</p>
-          </div>
-          <button onClick={handleSave} className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">Simpan Modul</button>
-        </div>
-        <div className="space-y-4">
-          {currentQ.options.map((opt, idx) => (
-            <div key={idx} className="flex gap-4 items-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100 hover:border-emerald-100 transition-all group">
-              <span className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-emerald-600 text-sm border border-slate-100 shadow-sm">{idx + 1}</span>
-              <input 
-                type="text" 
-                value={opt.text} 
-                onChange={e => {
-                  const newOpts = [...currentQ.options];
-                  newOpts[idx] = { ...opt, text: e.target.value };
-                  updateQ({ options: newOpts });
-                }}
-                placeholder="Pernyataan Perilaku (Contoh: Percaya diri, teliti...)"
-                className="flex-1 bg-white border-2 border-transparent focus:border-emerald-500 rounded-2xl px-6 py-4 font-bold text-slate-700 outline-none shadow-sm" 
-              />
-              <div className="flex flex-col gap-1">
-                <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Dimension</label>
-                <select 
-                  value={opt.most} 
-                  onChange={e => {
-                    const newOpts = [...currentQ.options];
-                    newOpts[idx] = { ...opt, most: e.target.value, least: e.target.value };
-                    updateQ({ options: newOpts });
-                  }}
-                  className="bg-white border-2 border-slate-100 rounded-xl px-4 py-3 font-black text-emerald-700 text-xs shadow-sm outline-none focus:border-emerald-500"
-                >
-                  <option value="D">DOMINANCE (D)</option>
-                  <option value="I">INFLUENCE (I)</option>
-                  <option value="S">STEADINESS (S)</option>
-                  <option value="C">COMPLIANCE (C)</option>
-                </select>
+      <div className="flex-1 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative min-h-[650px]">
+        {questions.length === 0 ? (
+           <div className="h-full flex flex-col items-center justify-center text-slate-300">
+              <p className="font-black uppercase tracking-widest mb-4">Belum ada soal</p>
+              <button onClick={handleAddQuestion} className="px-6 py-3 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-xs">+ Buat Soal Pertama</button>
+           </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h3 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Edit Nomor {activeIndex + 1}</h3>
+                <p className="text-xs font-bold text-slate-400 mt-2">Atur 4 pernyataan dan petakan ke watak (D/I/S/C).</p>
+              </div>
+              <div className="flex gap-3">
+                 {!balanceStatus.balanced && (
+                    <div className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-bold border border-rose-100 flex items-center gap-2 animate-pulse">
+                       ⚠️ Missing Logic: {balanceStatus.missing.join(', ')}
+                    </div>
+                 )}
+                 <button onClick={handleDeleteQuestion} className="px-4 py-2 bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-500 rounded-xl text-[10px] font-black uppercase transition-all">
+                    Hapus Soal Ini
+                 </button>
               </div>
             </div>
-          ))}
-        </div>
+            <div className="space-y-4">
+              {currentQ.options.map((opt, optIdx) => (
+                <div key={optIdx} className="flex gap-4 items-start group">
+                   <div className="mt-4 text-[10px] font-black text-slate-300 w-6 text-center">{String.fromCharCode(65 + optIdx)}</div>
+                   <div className="flex-1">
+                      <input 
+                        type="text" 
+                        value={opt.text}
+                        onChange={(e) => updateQuestion(activeIndex, optIdx, 'text', e.target.value)}
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-400 focus:bg-white rounded-2xl px-6 py-4 font-bold text-slate-700 outline-none transition-all shadow-inner"
+                        placeholder="Masukkan pernyataan perilaku..."
+                      />
+                   </div>
+                   <div className="w-40">
+                      <div className="relative">
+                         <select 
+                            value={opt.most}
+                            onChange={(e) => updateQuestion(activeIndex, optIdx, 'val', e.target.value)}
+                            className={`w-full appearance-none px-4 py-4 rounded-2xl font-black text-center outline-none border-2 cursor-pointer transition-all ${colors[opt.most] || 'bg-slate-100 text-slate-400 border-slate-200'}`}
+                         >
+                            <option value="D">DOMINANCE (D)</option>
+                            <option value="I">INFLUENCE (I)</option>
+                            <option value="S">STEADINESS (S)</option>
+                            <option value="C">COMPLIANCE (C)</option>
+                         </select>
+                         <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-50">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-12 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 text-center">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Preview Logika Scoring</p>
+               <div className="flex justify-center gap-6">
+                  {currentQ.options.map((o, i) => (
+                     <div key={i} className="flex flex-col items-center">
+                        <span className="text-[9px] font-bold text-slate-400 mb-2 uppercase">Opsi {String.fromCharCode(65+i)}</span>
+                        <div className={`w-12 h-12 flex items-center justify-center rounded-xl font-black text-sm shadow-sm border-2 ${colors[o.most]}`}>
+                           {o.most}
+                        </div>
+                     </div>
+                  ))}
+               </div>
+               <p className="text-[9px] text-slate-400 mt-6 italic">Setiap pilihan di atas harus mencakup 4 watak DISC yang unik (D, I, S, C) untuk menjaga validitas psikometri.</p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
+const PAPI_DIMENSIONS = [
+  { code: 'G', label: 'Peran Pekerja Keras (Hard Worker)' },
+  { code: 'L', label: 'Peran Pemimpin (Leadership)' },
+  { code: 'I', label: 'Peran Pembuat Keputusan (Integrator)' },
+  { code: 'T', label: 'Peran Sibuk (Tempo)' },
+  { code: 'V', label: 'Peran Semangat (Vigorous)' },
+  { code: 'S', label: 'Peran Bermasyarakat (Socializer)' },
+  { code: 'R', label: 'Peran Teoritis (Theoretical)' },
+  { code: 'D', label: 'Peran Bekerja Dengan Hal Rinci (Detail)' },
+  { code: 'C', label: 'Peran Mengatur (Organized)' },
+  { code: 'E', label: 'Peran Pengendalian Emosi (Emotional)' },
+  { code: 'N', label: 'Kebutuhan Menyelesaikan Tugas (Finish)' },
+  { code: 'A', label: 'Kebutuhan Berprestasi (Achievement)' },
+  { code: 'P', label: 'Kebutuhan Mengatur Orang Lain (Control)' },
+  { code: 'X', label: 'Kebutuhan Untuk Diperhatikan (Notice)' },
+  { code: 'B', label: 'Kebutuhan Diterima Kelompok (Belonging)' },
+  { code: 'O', label: 'Kebutuhan Kedekatan & Kasih Sayang (Affection)' },
+  { code: 'K', label: 'Kebutuhan Untuk Agresif (Aggressive)' },
+  { code: 'Z', label: 'Kebutuhan Untuk Berubah (Change)' },
+  { code: 'F', label: 'Kebutuhan Tunduk Pada Atasan (Authority)' },
+  { code: 'W', label: 'Kebutuhan Aturan & Pengarahan (Rules)' }
+];
+
 const PAPIEditor: React.FC<{ module: TestModule, onSave: (m: TestModule) => void }> = ({ module, onSave }) => {
   const [questions, setQuestions] = useState<PapiQuestion[]>(module.questions || []);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const updateQ = (data: Partial<PapiQuestion>) => {
+  const updateQuestion = (side: 'a' | 'b', field: 'text' | 'dimension', value: string) => {
     const newQs = [...questions];
-    newQs[activeIndex] = { ...newQs[activeIndex], ...data };
+    const currentPair = { ...newQs[activeIndex].pair };
+    
+    currentPair[side] = { ...currentPair[side], [field]: value };
+    
+    newQs[activeIndex] = { ...newQs[activeIndex], pair: currentPair };
     setQuestions(newQs);
   };
 
-  const handleSave = () => onSave({ ...module, questions, questionCount: questions.length });
+  const handleAddQuestion = () => {
+    const newId = questions.length + 1;
+    setQuestions([
+      ...questions,
+      {
+        id: newId,
+        pair: {
+          a: { text: "Pernyataan A (Contoh: Saya suka bekerja keras)", dimension: "G" },
+          b: { text: "Pernyataan B (Contoh: Saya suka memimpin)", dimension: "L" }
+        }
+      }
+    ]);
+    setActiveIndex(questions.length);
+  };
 
-  const currentQ = questions[activeIndex] || { id: activeIndex + 1, pair: { a: { text: '', dimension: 'G' }, b: { text: '', dimension: 'P' } } };
+  const handleDeleteQuestion = () => {
+    const newQs = questions.filter((_, i) => i !== activeIndex);
+    const reindexed = newQs.map((q, idx) => ({ ...q, id: idx + 1 }));
+    setQuestions(reindexed);
+    setActiveIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const handleSave = () => {
+    onSave({ ...module, questions, questionCount: questions.length });
+  };
+
+  const currentQ = questions[activeIndex];
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 animate-in fade-in duration-500">
-      <div className="w-full lg:w-64 bg-slate-50 p-6 rounded-3xl overflow-y-auto max-h-[650px] border border-slate-100 shadow-inner">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-2">Navigator PAPI (90 Soal)</p>
-        <div className="grid grid-cols-4 lg:grid-cols-3 gap-2">
-          {questions.map((_, i) => (
-            <button key={i} onClick={() => setActiveIndex(i)} className={`h-10 rounded-xl font-black text-[10px] transition-all ${activeIndex === i ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-emerald-200'}`}>
-              {i + 1}
-            </button>
-          ))}
+    <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in duration-500">
+      <div className="w-full xl:w-80 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col h-[700px]">
+        <div className="flex justify-between items-center mb-6 px-2">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peta Soal (90 Item)</p>
+          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold">{questions.length} / 90</span>
+        </div>
+        <div className="flex-1 overflow-y-auto pr-2">
+            <div className="grid grid-cols-5 gap-2">
+                {questions.map((_, i) => (
+                    <button 
+                    key={i} 
+                    onClick={() => setActiveIndex(i)} 
+                    className={`aspect-square rounded-lg font-black text-[10px] transition-all border 
+                    ${activeIndex === i 
+                        ? 'bg-slate-800 text-white border-slate-800 shadow-md scale-110' 
+                        : 'bg-white text-slate-400 border-slate-100 hover:border-blue-400 hover:text-blue-600'}`}
+                    >
+                    {i + 1}
+                    </button>
+                ))}
+                <button onClick={handleAddQuestion} className="aspect-square rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-black text-lg hover:bg-slate-50 hover:text-emerald-500 hover:border-emerald-300 transition-all">+</button>
+            </div>
+        </div>
+        <div className="mt-6 pt-6 border-t border-slate-100">
+             <button onClick={handleSave} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-500/20">
+                Simpan Bank Soal
+             </button>
         </div>
       </div>
-      <div className="flex-1 space-y-8 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">PAPI Kostick Item No. {activeIndex + 1}</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Struktur Kepribadian & Perilaku Kerja</p>
-          </div>
-          <button onClick={handleSave} className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">Simpan Modul</button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="p-10 rounded-[3rem] border-2 border-emerald-50 bg-white space-y-6 shadow-sm hover:border-emerald-200 transition-all">
-            <span className="bg-emerald-500 text-white px-6 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest">Pernyataan A</span>
-            <textarea 
-              value={currentQ.pair.a.text}
-              onChange={e => updateQ({ pair: { ...currentQ.pair, a: { ...currentQ.pair.a, text: e.target.value } } })}
-              rows={4}
-              className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-[2rem] p-6 font-bold text-slate-700 outline-none resize-none text-lg leading-relaxed"
-              placeholder="Saya suka bekerja keras..."
-            />
-            <div className="flex items-center justify-between pt-4">
-               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Arah Aspek (Arah Panah)</label>
-               <input type="text" maxLength={2} value={currentQ.pair.a.dimension} onChange={e => updateQ({ pair: { ...currentQ.pair, a: { ...currentQ.pair.a, dimension: e.target.value.toUpperCase() } } })} className="w-20 p-4 bg-emerald-50 border-2 border-emerald-100 rounded-2xl text-center font-black text-emerald-700 text-lg outline-none focus:border-emerald-500" />
+      <div className="flex-1 space-y-6">
+        {questions.length === 0 ? (
+           <div className="h-full bg-white rounded-[3rem] border border-slate-100 flex flex-col items-center justify-center text-slate-300 p-20 text-center">
+              <p className="font-black uppercase tracking-widest mb-4">Bank Soal PAPI Kosong</p>
+              <button onClick={handleAddQuestion} className="px-8 py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-xs shadow-sm hover:bg-emerald-100 transition-all">+ Tambah Nomor 1</button>
+           </div>
+        ) : (
+          <>
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex justify-between items-center">
+                <div>
+                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Nomor {activeIndex + 1}</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Forced Choice Format (A vs B)</p>
+                </div>
+                <button onClick={handleDeleteQuestion} className="px-6 py-3 bg-rose-50 text-rose-500 rounded-xl text-[10px] font-black uppercase hover:bg-rose-100 transition-all">
+                    Hapus Item Ini
+                </button>
             </div>
-          </div>
-          <div className="p-10 rounded-[3rem] border-2 border-blue-50 bg-white space-y-6 shadow-sm hover:border-blue-200 transition-all">
-            <span className="bg-blue-500 text-white px-6 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest">Pernyataan B</span>
-            <textarea 
-              value={currentQ.pair.b.text}
-              onChange={e => updateQ({ pair: { ...currentQ.pair, b: { ...currentQ.pair.b, text: e.target.value } } })}
-              rows={4}
-              className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] p-6 font-bold text-slate-700 outline-none resize-none text-lg leading-relaxed"
-              placeholder="Saya suka memimpin kelompok..."
-            />
-            <div className="flex items-center justify-between pt-4">
-               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Arah Aspek (Arah Panah)</label>
-               <input type="text" maxLength={2} value={currentQ.pair.b.dimension} onChange={e => updateQ({ pair: { ...currentQ.pair, b: { ...currentQ.pair.b, dimension: e.target.value.toUpperCase() } } })} className="w-20 p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl text-center font-black text-blue-700 text-lg outline-none focus:border-blue-500" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:border-emerald-200 transition-all group">
+                    <div className="flex justify-between items-center mb-6">
+                        <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-lg">A</span>
+                        <div className="flex flex-col items-end">
+                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Arah Skor (Dimension)</label>
+                            <select 
+                                value={currentQ.pair.a.dimension}
+                                onChange={(e) => updateQuestion('a', 'dimension', e.target.value)}
+                                className="bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer w-48 text-right"
+                            >
+                                {PAPI_DIMENSIONS.map(dim => (
+                                    <option key={dim.code} value={dim.code}>[{dim.code}] {dim.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <textarea 
+                        value={currentQ.pair.a.text}
+                        onChange={(e) => updateQuestion('a', 'text', e.target.value)}
+                        rows={4}
+                        placeholder="Masukkan teks pernyataan A..."
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-400 rounded-2xl p-5 font-bold text-slate-700 text-lg outline-none resize-none transition-all placeholder:text-slate-300"
+                    />
+                </div>
+                <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:border-blue-200 transition-all group">
+                    <div className="flex justify-between items-center mb-6">
+                        <span className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-lg">B</span>
+                        <div className="flex flex-col items-end">
+                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Arah Skor (Dimension)</label>
+                            <select 
+                                value={currentQ.pair.b.dimension}
+                                onChange={(e) => updateQuestion('b', 'dimension', e.target.value)}
+                                className="bg-blue-50 border border-blue-100 text-blue-800 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer w-48 text-right"
+                            >
+                                {PAPI_DIMENSIONS.map(dim => (
+                                    <option key={dim.code} value={dim.code}>[{dim.code}] {dim.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <textarea 
+                        value={currentQ.pair.b.text}
+                        onChange={(e) => updateQuestion('b', 'text', e.target.value)}
+                        rows={4}
+                        placeholder="Masukkan teks pernyataan B..."
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-400 rounded-2xl p-5 font-bold text-slate-700 text-lg outline-none resize-none transition-all placeholder:text-slate-300"
+                    />
+                </div>
             </div>
-          </div>
+            <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 text-center">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pratinjau Logika Penilaian</p>
+               <div className="flex justify-center items-center gap-8 text-sm font-bold text-slate-600">
+                  <div className="flex items-center gap-2">
+                     Jika pilih <span className="bg-white px-2 py-1 rounded border shadow-sm">A</span> ➔ Poin masuk ke <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded">{currentQ.pair.a.dimension}</span>
+                  </div>
+                  <div className="h-4 w-[1px] bg-slate-300"></div>
+                  <div className="flex items-center gap-2">
+                     Jika pilih <span className="bg-white px-2 py-1 rounded border shadow-sm">B</span> ➔ Poin masuk ke <span className="text-blue-600 bg-blue-100 px-2 py-1 rounded">{currentQ.pair.b.dimension}</span>
+                  </div>
+               </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const K3Editor: React.FC<{ module: TestModule, onSave: (m: TestModule) => void }> = ({ module, onSave }) => {
+  const [questions, setQuestions] = useState<Question[]>(module.questions || []);
+  const [config, setConfig] = useState<TestConfiguration>(module.config || { durationSeconds: 1200, passingScore: 70 });
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const updateQuestion = (idx: number, field: string, value: any) => {
+    const newQs = [...questions];
+    newQs[idx] = { ...newQs[idx], [field]: value };
+    setQuestions(newQs);
+  };
+
+  const updateOption = (qIdx: number, optIdx: number, text: string) => {
+    const newQs = [...questions];
+    if (newQs[qIdx].options) {
+      const newOpts = [...newQs[qIdx].options!];
+      newOpts[optIdx] = { ...newOpts[optIdx], text };
+      newQs[qIdx].options = newOpts;
+      setQuestions(newQs);
+    }
+  };
+
+  const handleAddQuestion = () => {
+    const newQ: Question = {
+      id: `q-${Date.now()}`,
+      text: '',
+      options: [
+        { id: 'a', text: '' }, { id: 'b', text: '' },
+        { id: 'c', text: '' }, { id: 'd', text: '' }
+      ],
+      correctOptionId: 'a'
+    };
+    setQuestions([...questions, newQ]);
+    setActiveIndex(questions.length);
+  };
+
+  const handleSave = () => {
+    onSave({ ...module, questions, config, questionCount: questions.length });
+  };
+
+  const currentQ = questions[activeIndex];
+
+  return (
+    <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in duration-500">
+      <div className="w-full xl:w-80 space-y-6">
+        <div className="bg-orange-50 p-6 rounded-[2.5rem] border border-orange-100 shadow-sm">
+           <h4 className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-4">Pengaturan Tes</h4>
+           <div className="space-y-4">
+              <div>
+                 <label className="text-[9px] font-bold text-slate-400 uppercase">Durasi Pengerjaan (Menit)</label>
+                 <input 
+                    type="number" 
+                    value={Math.floor((config.durationSeconds || 0) / 60)}
+                    onChange={(e) => setConfig({...config, durationSeconds: parseInt(e.target.value) * 60})}
+                    className="w-full bg-white border-2 border-orange-200 rounded-xl px-4 py-3 font-black text-slate-700 outline-none focus:border-orange-500 transition-all"
+                 />
+              </div>
+              <div>
+                 <label className="text-[9px] font-bold text-slate-400 uppercase">Passing Grade (Skor Min)</label>
+                 <input 
+                    type="number" 
+                    value={config.passingScore || 70}
+                    onChange={(e) => setConfig({...config, passingScore: parseInt(e.target.value)})}
+                    className="w-full bg-white border-2 border-orange-200 rounded-xl px-4 py-3 font-black text-slate-700 outline-none focus:border-orange-500 transition-all"
+                 />
+              </div>
+           </div>
         </div>
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-[400px] flex flex-col">
+           <div className="flex justify-between items-center mb-4">
+              <span className="text-[10px] font-black text-slate-400 uppercase">Daftar Soal</span>
+              <span className="bg-slate-100 text-slate-600 text-[9px] font-bold px-2 py-1 rounded">{questions.length} Butir</span>
+           </div>
+           <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-5 gap-2 content-start">
+              {questions.map((_, i) => (
+                 <button key={i} onClick={() => setActiveIndex(i)} className={`aspect-square rounded-lg font-black text-xs border ${activeIndex === i ? 'bg-orange-500 text-white border-orange-500 shadow-lg scale-110' : 'bg-white text-slate-400 border-slate-200 hover:border-orange-300'}`}>
+                    {i + 1}
+                 </button>
+              ))}
+              <button onClick={handleAddQuestion} className="aspect-square rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-bold hover:bg-orange-50 hover:text-orange-500 hover:border-orange-300 transition-all">+</button>
+           </div>
+        </div>
+        <button onClick={handleSave} className="w-full py-4 bg-orange-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-500 transition-all shadow-xl shadow-orange-600/20">
+            Simpan Modul
+        </button>
+      </div>
+      <div className="flex-1 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+         {currentQ ? (
+            <div className="space-y-8">
+               <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-slate-800 uppercase">Edit Soal No. {activeIndex + 1}</h3>
+                  <button onClick={() => {
+                      const newQs = questions.filter((_, i) => i !== activeIndex);
+                      setQuestions(newQs);
+                      setActiveIndex(Math.max(0, activeIndex - 1));
+                  }} className="text-rose-400 font-bold text-[10px] uppercase tracking-widest hover:text-rose-600 p-2 hover:bg-rose-50 rounded-xl transition-all">Hapus Soal</button>
+               </div>
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pertanyaan</label>
+                  <textarea 
+                     value={currentQ.text}
+                     onChange={(e) => updateQuestion(activeIndex, 'text', e.target.value)}
+                     rows={3}
+                     className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-400 rounded-[2rem] p-6 font-bold text-slate-700 text-lg outline-none resize-none transition-all"
+                     placeholder="Tulis pertanyaan di sini..."
+                  />
+               </div>
+               <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pilihan Jawaban (Klik Huruf untuk Kunci Jawaban)</label>
+                  <div className="grid grid-cols-1 gap-4">
+                     {currentQ.options?.map((opt, oIdx) => (
+                        <div key={opt.id} className={`flex items-center gap-4 p-3 rounded-2xl border-2 transition-all ${currentQ.correctOptionId === opt.id ? 'bg-emerald-50 border-emerald-400 shadow-sm' : 'bg-white border-slate-100 group'}`}>
+                           <button 
+                              onClick={() => updateQuestion(activeIndex, 'correctOptionId', opt.id)}
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm transition-all ${currentQ.correctOptionId === opt.id ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-100 text-slate-400 hover:bg-emerald-100 hover:text-emerald-600'}`}
+                           >
+                              {String.fromCharCode(65 + oIdx)}
+                           </button>
+                           <input 
+                              type="text" 
+                              value={opt.text}
+                              onChange={(e) => updateOption(activeIndex, oIdx, e.target.value)}
+                              className="flex-1 bg-transparent outline-none font-bold text-slate-700"
+                              placeholder={`Pilihan ${String.fromCharCode(65 + oIdx)}`}
+                           />
+                           {currentQ.correctOptionId === opt.id && <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider mr-2">Kunci Jawaban</span>}
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            </div>
+         ) : (
+            <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                <p className="font-black uppercase tracking-widest mb-4">Pilih atau Tambah Soal</p>
+                <button onClick={handleAddQuestion} className="px-6 py-3 bg-orange-50 text-orange-600 rounded-xl font-bold text-xs">+ Tambah Soal Pertama</button>
+            </div>
+         )}
       </div>
     </div>
   );
@@ -213,7 +560,7 @@ const IshiharaEditor: React.FC<{ module: TestModule, onSave: (m: TestModule) => 
         </div>
         <div className="flex gap-4">
           <button className="bg-emerald-50 text-emerald-600 border border-emerald-100 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-100 transition-all">+ Upload Pelat Baru</button>
-          <button onClick={handleSave} className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-600/20 hover:scale-105 transition-all">Update Gallery</button>
+          <button onClick={handleSave} className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">Update Gallery</button>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
@@ -248,240 +595,256 @@ const IshiharaEditor: React.FC<{ module: TestModule, onSave: (m: TestModule) => 
   );
 };
 
-const CustomModulBuilder: React.FC<{ module?: TestModule, onSave: (m: TestModule) => void, onCancel: () => void }> = ({ module, onSave, onCancel }) => {
-  const [data, setData] = useState<TestModule>(module || { 
-    id: `tm_custom_${Date.now()}`, 
-    title: '', 
-    type: TestType.MCQ, 
-    isActive: true, 
-    questionCount: 0, 
-    config: {}, 
-    questions: [] 
-  });
+// --- MODULE BUILDER COMPONENT ---
+const ModuleBuilder: React.FC<{ onPublish: (newModule: TestModule) => void; onCancel: () => void }> = ({ onPublish, onCancel }) => {
+  const [title, setTitle] = useState('');
+  const [engineType, setEngineType] = useState<TestType>(TestType.MCQ);
 
-  const addQuestion = () => {
-    const newQ: Question = {
-      id: `q-${Date.now()}`,
-      text: '',
-      options: [
-        { id: 'a', text: '' },
-        { id: 'b', text: '' },
-        { id: 'c', text: '' },
-        { id: 'd', text: '' }
-      ],
-      correctOptionId: 'a'
+  const handlePublish = () => {
+    if (!title.trim()) {
+      alert("Mohon isi Judul Modul Asesmen.");
+      return;
+    }
+
+    const newModule: TestModule = {
+      id: `tm_custom_${Date.now()}`, 
+      title: title,
+      type: engineType,
+      isActive: true,
+      questionCount: 0,
+      config: { durationSeconds: 1800, passingScore: 70 }, 
+      questions: []
     };
-    setData({ ...data, questions: [...(data.questions || []), newQ], questionCount: (data.questions?.length || 0) + 1 });
-  };
 
-  const updateQ = (idx: number, patch: Partial<Question>) => {
-    const newQs = [...(data.questions || [])];
-    newQs[idx] = { ...newQs[idx], ...patch };
-    setData({ ...data, questions: newQs });
+    onPublish(newModule);
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-8 duration-500 max-w-5xl mx-auto">
-      <div className="bg-white p-16 rounded-[4rem] border border-slate-100 shadow-xl space-y-10 relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-80 h-80 bg-blue-500/5 rounded-full blur-[100px] -mr-40 -mt-40"></div>
-        <div className="flex justify-between items-center relative z-10">
-          <div>
-            <h3 className="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">AI Module Builder</h3>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-2">Membangun Modul Rekrutmen Kustom</p>
-          </div>
-          <div className="flex gap-4">
-             <button onClick={onCancel} className="text-slate-400 font-black text-[10px] uppercase px-8 py-4 rounded-2xl hover:bg-slate-50 transition-all">Batal & Tutup</button>
-             <button onClick={() => onSave(data)} className="bg-emerald-600 text-white px-12 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-2xl shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95">Publikasikan Modul</button>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pt-10 border-t border-slate-100 relative z-10">
-           <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Judul Modul Asesmen</label>
-              <input type="text" value={data.title} onChange={e => setData({...data, title: e.target.value})} className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-[2rem] px-8 py-5 font-bold text-xl text-slate-800 outline-none shadow-inner" placeholder="Contoh: Tes Pengetahuan Kertas..." />
-           </div>
-           <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Kategori Engine</label>
-              <select value={data.type} onChange={e => setData({...data, type: e.target.value as any})} className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-[2rem] px-8 py-5 font-black text-lg text-slate-700 outline-none shadow-inner appearance-none">
-                 <option value={TestType.MCQ}>Pilihan Ganda (MCQ)</option>
-                 <option value={TestType.ESSAY}>Isian Bebas (Essay/Written)</option>
-              </select>
-           </div>
-        </div>
-      </div>
+    <div className="flex-1 flex items-center justify-center p-10 animate-in fade-in zoom-in-95 duration-500">
+      <div className="bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 max-w-2xl w-full relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
-      <div className="space-y-8">
-        {data.questions?.map((q: Question, idx: number) => (
-          <div key={q.id} className="bg-white p-12 rounded-[4rem] border border-slate-100 shadow-lg space-y-10 relative group hover:border-blue-100 transition-all">
-            <button onClick={() => {
-              const newQs = data.questions?.filter((_, i) => i !== idx);
-              setData({ ...data, questions: newQs, questionCount: newQs?.length || 0 });
-            }} className="absolute top-10 right-10 text-rose-300 hover:text-rose-500 font-black text-[10px] uppercase tracking-widest p-4 rounded-xl hover:bg-rose-50 transition-all">Hapus Soal No. {idx + 1}</button>
-            <div className="flex gap-10">
-               <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center font-black text-3xl flex-shrink-0 shadow-inner border-2 border-white">{idx + 1}</div>
-               <div className="flex-1 space-y-10">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Butir Pertanyaan</label>
-                    <textarea 
-                      value={q.text}
-                      onChange={e => updateQ(idx, { text: e.target.value })}
-                      rows={3}
-                      className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2.5rem] p-8 font-bold text-slate-800 outline-none resize-none text-xl leading-relaxed shadow-inner"
-                      placeholder="Masukkan teks pertanyaan di sini..."
-                    />
-                  </div>
-                  
-                  {data.type === TestType.MCQ ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {q.options.map((opt, oIdx) => (
-                        <div key={opt.id} className={`flex items-center gap-6 p-6 rounded-[2rem] border-2 transition-all group/opt ${q.correctOptionId === opt.id ? 'bg-emerald-50 border-emerald-500 shadow-lg' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
-                          <input 
-                            type="radio" 
-                            name={`correct-${q.id}`} 
-                            checked={q.correctOptionId === opt.id}
-                            onChange={() => updateQ(idx, { correctOptionId: opt.id })}
-                            className="w-6 h-6 accent-emerald-500" 
-                          />
-                          <span className="font-black text-slate-400 text-sm">{String.fromCharCode(65 + oIdx)}</span>
-                          <input 
-                            type="text" 
-                            value={opt.text}
-                            onChange={e => {
-                              const newOpts = [...q.options];
-                              newOpts[oIdx] = { ...opt, text: e.target.value };
-                              updateQ(idx, { options: newOpts });
-                            }}
-                            className="flex-1 bg-white border border-slate-100 rounded-2xl px-6 py-3 text-base font-bold outline-none group-hover/opt:border-emerald-200" 
-                            placeholder={`Masukkan Pilihan ${String.fromCharCode(65 + oIdx)}`} 
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 p-8 rounded-[2rem] border-2 border-dashed border-slate-200 text-center">
-                       <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-xs italic">Modul Essay: Peserta akan diberikan kotak input teks kosong.</p>
-                    </div>
-                  )}
+         <div className="flex justify-between items-start mb-10 relative z-10">
+            <div>
+               <h2 className="text-4xl font-black text-slate-800 uppercase tracking-tighter leading-none mb-2">AI Module<br/>Builder</h2>
+               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Membangun Modul Rekrutmen Kustom</p>
+            </div>
+            <div className="flex gap-4">
+               <button onClick={onCancel} className="px-6 py-3 text-slate-400 hover:text-rose-500 font-black text-[10px] uppercase tracking-widest transition-colors">
+                  Batal & Tutup
+               </button>
+               <button onClick={handlePublish} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-600/20 hover:scale-105 active:scale-95 transition-all">
+                  Publikasikan Modul
+               </button>
+            </div>
+         </div>
+
+         <div className="space-y-8 relative z-10">
+            <div className="space-y-3">
+               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Judul Modul Asesmen</label>
+               <input 
+                 type="text" 
+                 value={title}
+                 onChange={e => setTitle(e.target.value)}
+                 className="w-full bg-slate-50 border-2 border-slate-100 focus:border-emerald-500 focus:bg-white rounded-[2rem] px-8 py-6 font-black text-xl text-slate-800 outline-none transition-all placeholder:text-slate-300"
+                 placeholder="Contoh: Tes Pengetahuan Umum, Tes Coding PHP..."
+               />
+            </div>
+
+            <div className="space-y-3">
+               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori Engine</label>
+               <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setEngineType(TestType.MCQ)}
+                    className={`p-6 rounded-[2rem] border-2 text-left transition-all group ${engineType === TestType.MCQ ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white hover:border-emerald-200'}`}
+                  >
+                     <span className={`block text-2xl mb-2 ${engineType === TestType.MCQ ? 'grayscale-0' : 'grayscale'}`}>🛠️</span>
+                     <span className={`block font-bold text-sm ${engineType === TestType.MCQ ? 'text-emerald-900' : 'text-slate-500'}`}>Pilihan Ganda (MCQ)</span>
+                     <span className="text-[10px] text-slate-400">Jawaban A/B/C/D otomatis</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setEngineType(TestType.ESSAY)}
+                    className={`p-6 rounded-[2rem] border-2 text-left transition-all group ${engineType === TestType.ESSAY ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-white hover:border-blue-200'}`}
+                  >
+                     <span className={`block text-2xl mb-2 ${engineType === TestType.ESSAY ? 'grayscale-0' : 'grayscale'}`}>✍️</span>
+                     <span className={`block font-bold text-sm ${engineType === TestType.ESSAY ? 'text-blue-900' : 'text-slate-500'}`}>Esai Singkat</span>
+                     <span className="text-[10px] text-slate-400">Jawaban teks bebas</span>
+                  </button>
                </div>
             </div>
-          </div>
-        ))}
-        <button onClick={addQuestion} className="w-full py-16 rounded-[4rem] border-8 border-dashed border-slate-100 text-slate-200 hover:border-emerald-200 hover:text-emerald-400 hover:bg-emerald-50/50 transition-all font-black text-2xl uppercase tracking-[0.3em] flex flex-col items-center gap-4">
-          <span className="text-6xl">+</span>
-          <span>Tambah Butir Soal Baru</span>
-        </button>
+         </div>
       </div>
     </div>
   );
 };
 
-const TestManagement: React.FC<TestManagementProps> = ({ testModules, onUpdate, showToast }) => {
-  const [activeCategory, setActiveCategory] = useState<TestType>(TestType.DISC);
-  const [isCreatingModule, setIsCreatingModule] = useState(false);
+interface TestManagementProps {
+  testModules: TestModule[];
+  onUpdate: (modules: TestModule[]) => void;
+  showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+}
 
-  const categories = [
-    { id: TestType.DISC, label: 'Gaya Kerja (DISC)', icon: '🎭', color: 'emerald' },
-    { id: TestType.PAPI, label: 'Kepribadian (PAPI)', icon: '🧠', color: 'blue' },
-    { id: TestType.KRAEPELIN, label: 'Speed Engine (Koran)', icon: '⏱️', color: 'amber' },
-    { id: TestType.ISHIHARA, label: 'Color Vision (Buta Warna)', icon: '👁️', color: 'rose' },
-    { id: TestType.MCQ, label: 'Custom Builder', icon: '🛠️', color: 'slate' }
-  ];
+const TestManagement: React.FC<TestManagementProps> = ({ testModules, onUpdate, showToast }) => {
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(
+    testModules.length > 0 ? testModules[0].id : null
+  );
+  const [isBuilderMode, setIsBuilderMode] = useState(false);
+
+  const activeModule = testModules.find(m => m.id === activeModuleId);
 
   const handleSaveModule = async (updatedModule: TestModule) => {
     try {
       await api.updateTestModule(updatedModule);
       const allModules = await api.getTestModules();
       onUpdate(allModules);
-      setIsCreatingModule(false);
-      showToast(`Berhasil sinkronisasi modul ${updatedModule.title}`, "success");
+      showToast(`Berhasil menyimpan modul ${updatedModule.title}`, "success");
     } catch (err) {
-      showToast("Gagal menyimpan bank soal.", "error");
+      const updated = testModules.map(m => m.id === updatedModule.id ? updatedModule : m);
+      onUpdate(updated);
+      showToast("Tersimpan (Offline Mode).", "success");
     }
   };
 
-  const renderEditor = () => {
-    const currentModule = testModules.find(m => m.type === activeCategory);
-
-    if (activeCategory === TestType.MCQ) {
-      if (isCreatingModule) {
-        return <CustomModulBuilder onSave={handleSaveModule} onCancel={() => setIsCreatingModule(false)} />;
+  const handleDeleteModule = (id: string) => {
+    if (window.confirm("Yakin ingin menghapus modul ini secara permanen?")) {
+      const newModules = testModules.filter(m => m.id !== id);
+      onUpdate(newModules);
+      if (activeModuleId === id) {
+        setActiveModuleId(newModules.length > 0 ? newModules[0].id : null);
       }
+      showToast("Modul berhasil dihapus.", "info");
+    }
+  };
+
+  const handlePublishNewModule = (newModule: TestModule) => {
+    onUpdate([...testModules, newModule]);
+    setIsBuilderMode(false); 
+    setActiveModuleId(newModule.id); 
+    showToast(`Modul "${newModule.title}" berhasil dibuat!`, 'success');
+  };
+
+  const renderEditor = () => {
+    if (isBuilderMode) {
       return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-          <div className="flex justify-between items-center bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-            <div>
-              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight leading-none">Manajemen Modul Kustom</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Daftar Tes Pengetahuan & Kompetensi Internal</p>
-            </div>
-            <button onClick={() => setIsCreatingModule(true)} className="bg-emerald-600 text-white px-10 py-4 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:scale-105 transition-all">+ Buat Modul Baru</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {testModules.filter(m => m.id.startsWith('tm_custom')).map(m => (
-              <div key={m.id} className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm flex justify-between items-center group hover:border-emerald-300 transition-all hover:shadow-2xl">
-                 <div className="flex gap-6 items-center">
-                    <div className="w-16 h-16 bg-slate-900 rounded-[1.5rem] flex items-center justify-center text-white text-2xl shadow-lg">📄</div>
-                    <div>
-                      <h4 className="font-black text-slate-800 text-xl leading-tight group-hover:text-emerald-600 transition-colors uppercase tracking-tighter">{m.title}</h4>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{m.questionCount} Butir Soal • {m.type}</p>
-                    </div>
-                 </div>
-                 <button onClick={() => { setActiveCategory(TestType.MCQ); setIsCreatingModule(true); }} className="w-14 h-14 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-all shadow-sm">✏️</button>
-              </div>
-            ))}
-            {testModules.filter(m => m.id.startsWith('tm_custom')).length === 0 && (
-              <div className="md:col-span-2 py-32 bg-slate-50/50 rounded-[4rem] border-4 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-300 gap-4">
-                 <span className="text-8xl opacity-10">📂</span>
-                 <p className="font-black uppercase tracking-[0.3em] text-xs">Belum ada modul kustom yang dibuat</p>
-              </div>
-            )}
-          </div>
+        <ModuleBuilder 
+          onPublish={handlePublishNewModule} 
+          onCancel={() => setIsBuilderMode(false)} 
+        />
+      );
+    }
+
+    if (!activeModule) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-10 text-center">
+           <div className="text-6xl mb-4">📭</div>
+           <p className="font-bold">Tidak ada modul yang dipilih.</p>
+           <p className="text-xs mt-2">Pilih modul di menu kiri atau buat baru.</p>
         </div>
       );
     }
 
-    if (!currentModule) return <div className="p-32 text-center text-slate-300 font-black uppercase tracking-[0.4em] bg-white rounded-[4rem] border-4 border-dashed border-slate-100 shadow-inner flex flex-col gap-6 items-center"><span className="text-6xl">🚫</span>Modul {activeCategory} tidak ditemukan</div>;
-
-    switch (activeCategory) {
-      case TestType.DISC: return <DISCEditor module={currentModule} onSave={handleSaveModule} />;
-      case TestType.PAPI: return <PAPIEditor module={currentModule} onSave={handleSaveModule} />;
-      case TestType.KRAEPELIN: return <KraepelinConfigEditor module={currentModule} onSave={handleSaveModule} />;
-      case TestType.ISHIHARA: return <IshiharaEditor module={currentModule} onSave={handleSaveModule} />;
-      default: return null;
+    switch (activeModule.type) {
+      case TestType.DISC: return <DISCEditor module={activeModule} onSave={handleSaveModule} />;
+      case TestType.PAPI: return <PAPIEditor module={activeModule} onSave={handleSaveModule} />;
+      case TestType.KRAEPELIN: return <KraepelinConfigEditor module={activeModule} onSave={handleSaveModule} />;
+      case TestType.ISHIHARA: return <IshiharaEditor module={activeModule} onSave={handleSaveModule} />;
+      case TestType.K3: return <K3Editor module={activeModule} onSave={handleSaveModule} />;
+      case TestType.MCQ: return <K3Editor module={activeModule} onSave={handleSaveModule} />;
+      default: return <div className="p-10">Tipe Editor belum didukung.</div>;
     }
   };
 
+  const getModuleStyle = (type: TestType) => {
+     switch(type) {
+        case TestType.DISC: return { icon: '🎭', color: 'bg-emerald-100 text-emerald-600', border: 'hover:border-emerald-300' };
+        case TestType.PAPI: return { icon: '🧠', color: 'bg-blue-100 text-blue-600', border: 'hover:border-blue-300' };
+        case TestType.KRAEPELIN: return { icon: '⏱️', color: 'bg-indigo-100 text-indigo-600', border: 'hover:border-indigo-300' };
+        case TestType.ISHIHARA: return { icon: '👁️', color: 'bg-rose-100 text-rose-600', border: 'hover:border-rose-300' };
+        case TestType.K3: return { icon: '⛑️', color: 'bg-orange-100 text-orange-600', border: 'hover:border-orange-300' };
+        default: return { icon: '📝', color: 'bg-slate-100 text-slate-600', border: 'hover:border-slate-300' };
+     }
+  }
+
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20">
-       <div className="bg-gradient-to-br from-slate-900 to-[#134e40] p-20 rounded-[4.5rem] text-white shadow-[0_50px_100px_rgba(0,0,0,0.3)] relative overflow-hidden group">
+       <div className="bg-gradient-to-br from-slate-900 to-[#134e40] p-16 rounded-[4rem] text-white shadow-2xl relative overflow-hidden group">
          <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px] -mr-24 -mt-24 transition-transform group-hover:scale-110 duration-1000"></div>
-         <div className="absolute left-1/2 bottom-0 w-[80%] h-1 bg-emerald-500/20 blur-xl transform -translate-x-1/2"></div>
-         <div className="relative z-10 space-y-6">
-           <div className="flex items-center gap-4 mb-2">
-              <span className="px-5 py-2 rounded-full bg-emerald-500 text-emerald-950 font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20">System Architect v2.0</span>
-           </div>
-           <h1 className="text-7xl font-black tracking-tighter leading-none mb-4 uppercase">Bank Soal &<br/><span className="text-emerald-400">Master Config</span></h1>
-           <p className="max-w-2xl text-emerald-50/60 font-medium text-xl italic leading-relaxed">Pusat manajemen psikometri industri PT. Buana Megah. Konfigurasi setiap modul tes secara independen untuk hasil seleksi talenta yang akurat dan objektif.</p>
+         <div className="relative z-10 space-y-4">
+           <h1 className="text-6xl font-black tracking-tighter leading-none uppercase">Bank Soal & Master Config</h1>
+           <p className="max-w-2xl text-emerald-50/60 font-medium text-lg italic leading-relaxed">Pusat manajemen psikometri industri PT. Buana Megah. Konfigurasi modul seleksi talenta secara independen.</p>
          </div>
        </div>
 
-       <div className="flex flex-col xl:flex-row gap-10">
-          <div className="w-full xl:w-96 flex flex-col gap-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] ml-6 mb-2">Pilih Kategori Editor</p>
-            {categories.map(cat => (
-              <button 
-                key={cat.id} 
-                onClick={() => { setActiveCategory(cat.id); setIsCreatingModule(false); }}
-                className={`flex items-center gap-6 px-10 py-7 rounded-[2.5rem] font-black text-sm transition-all text-left group ${activeCategory === cat.id ? 'bg-[#134e40] text-white shadow-2xl shadow-emerald-900/30' : 'bg-white text-slate-400 border border-slate-100 hover:border-emerald-200 hover:text-emerald-600'}`}
-              >
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-all group-hover:scale-110 ${activeCategory === cat.id ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>{cat.icon}</div>
-                <div className="flex flex-col">
-                  <span className="uppercase tracking-tighter leading-none text-lg">{cat.label.split('(')[0]}</span>
-                  <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest mt-1">Assessment Engine</span>
-                </div>
-              </button>
-            ))}
+       <div className="flex flex-col xl:flex-row gap-8 min-h-[80vh]">
+          <div className="w-full xl:w-80 flex flex-col gap-4 animate-in slide-in-from-left duration-500">
+             <div className="flex justify-between items-end px-2 mb-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Modul Aktif</p>
+             </div>
+
+             <button 
+                onClick={() => setIsBuilderMode(true)}
+                className={`p-5 rounded-[2rem] text-left transition-all border-2 group relative overflow-hidden
+                ${isBuilderMode 
+                   ? 'bg-slate-800 text-white border-slate-800 shadow-xl' 
+                   : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-400'}`}
+             >
+                 <div className="relative z-10 flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg transition-colors ${isBuilderMode ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
+                       +
+                    </div>
+                    <div>
+                       <span className="block font-black text-sm uppercase tracking-tight">Custom Builder</span>
+                       <span className="text-[10px] opacity-70">Buat Modul Baru</span>
+                    </div>
+                 </div>
+             </button>
+
+             <div className="h-[1px] bg-slate-100 my-2"></div>
+
+             <div className="flex-1 overflow-y-auto space-y-3 pr-2 max-h-[600px] no-scrollbar">
+                {testModules.map((mod) => {
+                   const style = getModuleStyle(mod.type);
+                   const isActive = activeModuleId === mod.id && !isBuilderMode;
+
+                   return (
+                      <div key={mod.id} className="relative group">
+                         {!['tm_disc', 'tm_papi', 'tm_kraepelin', 'tm_ishihara', 'tm_k3'].includes(mod.id) && (
+                            <button 
+                               onClick={(e) => { e.stopPropagation(); handleDeleteModule(mod.id); }}
+                               className="absolute top-2 right-2 z-20 w-6 h-6 bg-white text-rose-400 hover:bg-rose-500 hover:text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-[10px] shadow-sm"
+                               title="Hapus Modul"
+                            >✕</button>
+                         )}
+
+                         <button 
+                            onClick={() => { setActiveModuleId(mod.id); setIsBuilderMode(false); }}
+                            className={`w-full p-4 rounded-[2rem] text-left transition-all border-2 relative
+                            ${isActive 
+                               ? 'bg-white border-emerald-500 shadow-lg shadow-emerald-500/10 z-10 scale-[1.02]' 
+                               : `bg-white border-transparent ${style.border} hover:bg-slate-50`}`}
+                         >
+                            <div className="flex items-center gap-4">
+                               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm ${style.color}`}>
+                                  {style.icon}
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                  <h4 className={`font-black text-xs uppercase tracking-tight truncate ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>
+                                     {mod.title}
+                                  </h4>
+                                  <p className="text-[9px] font-bold text-slate-300 mt-1 truncate uppercase">
+                                     {mod.type} • {mod.questionCount} SOAL
+                                  </p>
+                               </div>
+                            </div>
+                         </button>
+                      </div>
+                   );
+                })}
+             </div>
           </div>
 
-          <div className="flex-1 min-h-[700px]">
+          <div className="flex-1 min-w-0">
              {renderEditor()}
           </div>
        </div>

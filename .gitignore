@@ -1,4 +1,4 @@
-# Logs
+# --- FRONTEND (Node.js) ---
 logs
 *.log
 npm-debug.log*
@@ -12,11 +12,20 @@ dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# --- BACKEND (PHP / Composer) ---
+/vendor/
+.env
+.env.backup
+.env.production
+phpunit.xml
+.phpunit.result.cache
+
+# --- OS / IDE Files ---
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
